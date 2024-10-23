@@ -6,7 +6,7 @@ import time
 from mpi4py import MPI
 import ufl 
 from dolfinx.io import gmshio
-from dolfinx.fem import (Constant, Function, FunctionSpace, assemble_scalar, form)
+from dolfinx.fem import (Constant, Function, functionspace, assemble_scalar, form, Expression, assemble)
 from dolfinx.fem.petsc import assemble_matrix, assemble_vector
 from petsc4py import PETSc
 
@@ -26,11 +26,10 @@ class EIT():
         self.Inj = Inj 
         self.z = z
 
-        self.omega, _, facet_markers = gmshio.read_from_msh("/home/adenker/projects/dl_eit/FenicsX/Mesh/potential_mesh.msh", MPI.COMM_WORLD, gdim=2)
+        self.omega, _, facet_markers = gmshio.read_from_msh("/home/alexdenker/Bremen/dl_eit/FenicsX/Mesh/potential_mesh.msh", MPI.COMM_WORLD, gdim=2)
         #self.omega, _, facet_markers = gmshio.read_from_msh("src/forward_operator/Mesh/EIT_disk_res5.msh", MPI.COMM_WORLD, gdim=2)
         self.omega.topology.create_connectivity(1, 2)
-
-                
+    
         ## Boundary measure
         self.ds_electrodes = ufl.Measure("ds", domain=self.omega, subdomain_data=facet_markers) 
 
@@ -38,7 +37,7 @@ class EIT():
         self.electrode_len = assemble_scalar(form(1 * self.ds_electrodes(1)))
 
         ### Create function space and helper functions
-        self.V = FunctionSpace(self.omega, ("Lagrange", 1))
+        self.V = functionspace(self.omega, ("Lagrange", 1))
 
         u_sol = Function(self.V)
         self.dofs = len(u_sol.x.array)
@@ -94,10 +93,15 @@ class EIT():
         M_complete = scipy_A + self.M
         return M_complete 
 
-    def forward_solve(self, sigma):
+    def forward_solve(self, sigma, Inj=None):
         """
         sigma: Fenics functions
+        Inj: optional, solve for a different pattern current 
+            injection pattern (32, N) matrix with the number of patterns N
         """
+
+        if Inj is None:
+            Inj = self.Inj
 
         ##  build part of LHS dependent on sigma ##
 
@@ -133,11 +137,11 @@ class EIT():
 
             u_all = [] 
             U_all = [] 
-            for inj_idx in range(self.Inj.shape[-1]):
+            for inj_idx in range(Inj.shape[-1]):
                 with petsc_vec.localForm() as loc_b:
                     loc_b.set(0)
 
-                for i in range(self.Inj.shape[0]):
+                for i in range(Inj.shape[0]):
                     petsc_vec.setValues([self.dofs + i], [self.Inj[i, inj_idx]])
                     petsc_vec.assemblyBegin()
                     petsc_vec.assemblyEnd()
@@ -155,11 +159,11 @@ class EIT():
             u_all = []
             U_all = [] 
 
-            for inj_idx in range(self.Inj.shape[-1]):
+            for inj_idx in range(Inj.shape[-1]):
 
                 rhs = np.zeros(self.dofs+33)
-                for i in range(self.Inj.shape[0]):
-                    rhs[self.dofs + i] = self.Inj[i, inj_idx]
+                for i in range(Inj.shape[0]):
+                    rhs[self.dofs + i] = Inj[i, inj_idx]
                     
                 sol = solver(rhs)
                 u_all.append(sol[:self.dofs])
@@ -242,3 +246,104 @@ class EIT():
 
         return p_all
     
+
+    def calc_jacobian(self, sigma):
+        """
+        Inj: optional, solve for a different pattern current 
+            injection pattern (32, N) matrix with the number of patterns N
+
+        """
+
+        u_all, U_all = self.forward_solve(sigma)
+
+        # here we have to solve the forward problem with a different injection pattern 
+
+        #Construction new current pattern for Jacobian calc.
+        #Ref: https://fabiomargotti.paginas.ufsc.br/files/2017/12/Margotti_Fabio-3.pdf chap 5.2.1
+        I2_all=[]  #We will use to construct a smart way to calc. Jacobian
+        for i in range(self.Inj.shape[0]):
+            #I2_i=1 at electrode i and zero otherwise
+            I2 = np.zeros(self.Inj.shape[0])
+            I2[i] = 1
+            I2_all.append(I2)
+        
+        I2_all = np.array(I2_all).T
+        print("Size of new injection pattern, should be [32, ...] : ", I2_all.shape)
+        print(I2_all)
+        bu_all, BU = self.forward_solve(sigma, I2_all)
+
+        
+        # Define Q_DG as a Discontinuous Galerkin vector function space
+        Q_DG = functionspace(self.omega, ("DG", 0, (2, )))
+
+        DG0 = functionspace(self.omega, ("DG", 0))
+
+        v = ufl.TestFunction(DG0)
+        cell_area_form = form(v*ufl.dx)
+        cell_area = assemble_vector(cell_area_form)
+        #print(cell_area.array)
+
+        #  a(u,v)=inner(u,v)*dx=inner(grad(f),v)*dx=l(v)
+        # u,v are Trial and test functions for the space you want to project into
+
+        # Project the gradient of 'u' into Q_DG and reshape the results
+        
+        """
+        list_grad_u = []
+        for u in u_all:
+            u_fun = Function(self.V)
+            u_fun.x.array[:] = u 
+
+            grad_u = Function(Q_DG)
+            grad_u_expr = Expression(ufl.as_vector((u_fun.dx(0), u_fun.dx(1))), Q_DG.element.interpolation_points())
+            grad_u.interpolate(grad_u_expr)
+
+            grad_u_vec = grad_u.vector.array.reshape(-1, 2)
+            list_grad_u.append(grad_u_vec)
+
+        # Project the gradient of 'bu' into Q_DG and reshape the results
+        list_grad_bu = []
+        for bu in bu_all:
+            bu_fun = Function(self.V)
+            bu_fun.x.array[:] = bu 
+
+            grad_u = Function(Q_DG)
+            grad_u_expr = Expression(ufl.as_vector((bu_fun.dx(0), bu_fun.dx(1))), Q_DG.element.interpolation_points())
+            grad_u.interpolate(grad_u_expr)
+
+            grad_u_vec = grad_u.vector.array.reshape(-1, 2)
+            list_grad_bu.append(grad_u_vec)
+
+        print(len(list_grad_u), len(list_grad_bu))
+        print(len(list_grad_u[0].shape))
+        """ 
+
+        u1 = Function(self.V)
+        u2 = Function(self.V)
+
+        v = ufl.TestFunction(DG0)
+        v_ = Function(DG0)
+        print("SHAPES: ", v_.x.array.shape, u1.x.array.shape)
+        for h in range(len(u_all)): #For each experiment
+            derivative =[]
+            u1.x.array[:] = u_all[h] #list_grad_u[h]
+            for j in range(32): #for each electrode
+                u2.x.array[:] = bu_all[j]  #list_grad_bu[j]
+
+                #row = assemble_vector(form(-1*ufl.inner(u1,u2)*ufl.dx))
+                #row = assemble_vector(form(-1*(u1[0] * u2[0] + u1[0] * u2[0])*ufl.dx))
+                row = assemble_vector(form(-1*v*ufl.inner(ufl.grad(u1), ufl.grad(u2))*ufl.dx))
+
+                #print(row)
+                #row2 = -1*np.sum(list_grad_bu[j]*list_grad_u[h], axis=1)*cell_area.array
+                #print(np.sum((row2 - row.array)**2))
+                #print(row2[0:10], row.array[0:10])
+                derivative.append(row.array) #Get the function value in eache element
+                
+            Jacobian = np.array(derivative) #Matrix * Volume_cell
+            if h==0: 
+                Jacobian_all=Jacobian #Append all jacs.
+            else: 
+                Jacobian_all=np.concatenate((Jacobian_all, Jacobian), axis=0)
+            
+        return Jacobian_all

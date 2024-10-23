@@ -35,7 +35,7 @@ class CEMModule(nn.Module):
         self.bc = dirichletbc(PETSc.ScalarType(0), locate_dofs_topological(self.eit_solver.V, fdim, boundary_facets), self.eit_solver.V)
 
         if self.gradient_smooting:
-            a = (-ufl.inner(self.kappa * ufl.grad(self.eit_solver.u), ufl.grad(self.eit_solver.phi))  + self.eit_solver.u * self.eit_solver.phi) * ufl.dx
+            a = (ufl.inner(self.kappa * ufl.grad(self.eit_solver.u), ufl.grad(self.eit_solver.phi))  + self.eit_solver.u * self.eit_solver.phi) * ufl.dx
         else:
             a = self.eit_solver.u * self.eit_solver.phi * ufl.dx
 
@@ -122,7 +122,6 @@ class CEMTorch(torch.autograd.Function):
                 with ctx.b.localForm() as loc_b:
                     loc_b.set(0)
     
-
                 L = - ufl.inner(ufl.grad(u_placeholder), ufl.grad(p_placeholder)) * eit_solver.phi * ufl.dx
 
                 u_placeholder.x.array[:] = ctx.us[batch][i]
@@ -144,7 +143,7 @@ class CEMTorch(torch.autograd.Function):
             sigma_update.interpolate(Dsigma_sum)
 
             sigma_update_np = np.array(sigma_update.x.array[:])/len(p_list)
-            grad_torch[batch] = -torch.tensor(sigma_update_np, dtype=torch.double)
+            grad_torch[batch] = torch.tensor(sigma_update_np, dtype=torch.double)
 
         return grad_torch, None, None, None, None, None, None, None 
 
