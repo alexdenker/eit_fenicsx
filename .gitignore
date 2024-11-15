@@ -1,1 +1,8 @@
 *.pyc 
+
+*.mat
+*.npy
+
+tmp/
+KIT4/
+KTC2023/
