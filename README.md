@@ -14,6 +14,12 @@ conda activate fenicsx-env
 conda install -c conda-forge fenics-dolfinx mpich pyvista
 ```
 
+FenicsX is compatible with pytorch. The code is tested with pytorch version 2.3.1 and CUDA 12.1. This can be installed via:
+
+```python
+conda install pytorch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 pytorch-cuda=12.1 -c pytorch -c nvidia
+```
+
 ## Example 
 
 Examples will be coming soon.
