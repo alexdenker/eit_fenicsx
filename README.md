@@ -2,7 +2,7 @@
 
 This repository contains a FEM solver for the complete electrode model (CEM) used in electrical impedance tomography (EIT). The FEM solver is implemented in FenicsX. The Jacobian computation follows the work by Margotti ([Section 5.2.2.](https://publikationen.bibliothek.kit.edu/1000048606))
 
-This solver was used the submission to KTC2023 by the team Alexander Denker, Zeljko Kereta, Imraj Singh, Tom Freudenberg, Tobias Kluth, Simon Arridge and Peter Maass from University of Bremen and University College London.
+This solver was used in the submission to KTC2023 by the team Alexander Denker, Zeljko Kereta, Imraj Singh, Tom Freudenberg, Tobias Kluth, Simon Arridge and Peter Maass from University of Bremen and University College London.
 
 ## Installation 
 
