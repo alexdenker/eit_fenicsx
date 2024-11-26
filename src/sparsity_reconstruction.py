@@ -166,7 +166,7 @@ class L1Sparsity():
                 relative_change_list.append(s)
 
                 if all([change < self.stopping_criterion for change in relative_change_list]) or s == 0.0:
-                    print(f"Stopping criterion reached at iteration {step}")
+                    
                     break 
 
                 if len(relative_change_list) > 5:
@@ -174,7 +174,8 @@ class L1Sparsity():
 
                 pbar.set_description(f"Relative Change: {np.format_float_positional(s, 4)} | Obj. fun: {np.format_float_positional(full_loss_list[-1], 4)} | Step size: {np.format_float_positional(step_size, 4)}")
                 pbar.update(1)
-
+        
+        print(f"Stopping criterion reached at iteration {step}")
         return sigma_j, full_loss_list
 
     def compute_gradient(self, u_list, p_list, b, L, u_placeholder, p_placeholder):

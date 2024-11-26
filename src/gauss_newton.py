@@ -42,55 +42,68 @@ class GaussNewtonSolver():
 
         sigma = sigma_init.x.array[:]
 
+
+        sigma_old = Function(self.eit_solver.V_sigma)
+
         disable = not verbose
-        for i in tqdm(range(num_steps), disable=disable):
-            sigma_k = Function(self.eit_solver.V_sigma)
-            sigma_k.x.array[:] = sigma
+        with tqdm(total=num_steps, disable=disable) as pbar:
 
-    
-            u_all, Usim = self.eit_solver.forward_solve(sigma_k)
-            Usim = np.asarray(Usim).flatten()
+            for i in range(num_steps):
+                sigma_k = Function(self.eit_solver.V_sigma)
+                sigma_k.x.array[:] = sigma
 
-            J = self.eit_solver.calc_jacobian(sigma_k, u_all)
+                sigma_old.x.array[:] = sigma
+        
+                u_all, Usim = self.eit_solver.forward_solve(sigma_k)
+                Usim = np.asarray(Usim).flatten()
 
-            deltaU = Usim - Umeas
+                J = self.eit_solver.calc_jacobian(sigma_k, u_all)
 
-            J = torch.from_numpy(J).float().to(self.device)
-            deltaU = torch.from_numpy(deltaU).float().to(self.device)
+                deltaU = Usim - Umeas
 
-            if GammaInv is not None:
-                A = J.T @ torch.diag(GammaInv) @ J   
-                b = J.T @ torch.diag(GammaInv) @ deltaU 
-            else:
-                A = J.T @ J
-                b = J.T @ deltaU 
+                J = torch.from_numpy(J).float().to(self.device)
+                deltaU = torch.from_numpy(deltaU).float().to(self.device)
 
-            if R is not None:
-                if R == "LM":
-                    A = A + lamb*torch.diag(torch.diag(A))
+                if GammaInv is not None:
+                    A = J.T @ torch.diag(GammaInv) @ J   
+                    b = J.T @ torch.diag(GammaInv) @ deltaU 
                 else:
-                    A = A + lamb*R
+                    A = J.T @ J
+                    b = J.T @ deltaU 
 
-            delta_sigma = torch.linalg.solve(A,b).cpu().numpy()
+                if R is not None:
+                    if R == "LM":
+                        A = A + lamb*torch.diag(torch.diag(A)) + lamb/2. * torch.eye(len(sigma_init.x.array[:]), device=self.device)
+                    else:
+                        A = A + lamb*R 
 
-            # TODO: Implement a good step size search
-            step_sizes = np.linspace(0.01, 1, 6)
-            losses = []
-            for step_size in step_sizes:
-                sigma_new = sigma + step_size*delta_sigma
+                delta_sigma = torch.linalg.solve(A,b).cpu().numpy()
 
-                sigma_new = np.clip(sigma_new, clip[0], clip[1])
+                # TODO: Implement a good step size search
+                step_sizes = np.linspace(0.01, 1.0, 6)
+                losses = []
+                for step_size in step_sizes:
+                    sigma_new = sigma + step_size*delta_sigma
 
-                sigmanew = Function(self.eit_solver.V_sigma)
-                sigmanew.x.array[:] = sigma_new
+                    sigma_new = np.clip(sigma_new, clip[0], clip[1])
 
-                _, Utest = self.eit_solver.forward_solve(sigmanew)
-                Utest = np.asarray(Utest).flatten()
-                losses.append(np.sum((Utest - Umeas)**2))
+                    sigmanew = Function(self.eit_solver.V_sigma)
+                    sigmanew.x.array[:] = sigma_new
 
-            step_size = step_sizes[np.argmin(losses)]
-            sigma = sigma + step_size*delta_sigma
+                    _, Utest = self.eit_solver.forward_solve(sigmanew)
+                    Utest = np.asarray(Utest).flatten()
+                    losses.append(np.sum((Utest - Umeas)**2))
 
-            sigma = np.clip(sigma, clip[0], clip[1])
+                step_size = step_sizes[np.argmin(losses)]
+
+                sigma = sigma + step_size*delta_sigma
+
+                sigma = np.clip(sigma, clip[0], clip[1])
+
+                s = np.linalg.norm(sigma - sigma_old.x.array[:])/np.linalg.norm(sigma)
+                loss = np.min(losses)
+
+                pbar.set_description(f"Relative Change: {np.format_float_positional(s, 4)} | Obj. fun: {np.format_float_positional(loss, 4)} | Step size: {np.format_float_positional(step_size, 4)}")
+                pbar.update(1)
 
         return sigma
