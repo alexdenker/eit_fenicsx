@@ -62,7 +62,10 @@ conda install pytorch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 pytorch-cuda=
 
 ## Example 
 
-Examples will be coming soon.
+The script `reconstruct_simulated_data.py` contains an example to reconstruct from (noisy) simulated measurements with both the L1-Sparsity algorithm and a Gauss-Newton method with a Gaussian smoothness regulariser. 
+
+![Reconstruction](imgs/example_reconstruction.png "Reconstruction")
+
 
 
 ### Citation

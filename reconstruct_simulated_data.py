@@ -43,7 +43,7 @@ tri = Triangulation(xy[:, 0], xy[:, 1], cells)
 
 mesh_pos = np.array(solver.V_sigma.tabulate_dof_coordinates()[:,:2])
 
-np.random.seed(14)
+np.random.seed(16) # 14: works well
 sigma_mesh = gen_conductivity(mesh_pos[:,0], mesh_pos[:,1], max_numInc=3, backCond=backCond)
 sigma_gt_vsigma = Function(solver.V_sigma)
 sigma_gt_vsigma.x.array[:] = sigma_mesh
@@ -63,8 +63,8 @@ Umeas = Umeas + np.sqrt(var_meas) * np.random.normal(size=Umeas.shape)
 l1 = 0.01 # smallest possible conductivity 
 l2 = 4.0 # largest conductivity 
 
-alpha = 0.0005 #0.0001
-kappa = 0.01
+alpha = 0.001 #0.0001
+kappa = 0.03
 
 l1_reconstructor = L1Sparsity(eit_solver=solver,
                             backCond=backCond,
@@ -104,11 +104,11 @@ gauss_newton_solver = GaussNewtonSolver(solver, device=device)
 
 sigma = gauss_newton_solver.reconstruct(Umeas=Umeas_flatten,
                                         sigma_init=sigma_init,
-                                        num_steps=15,
-                                        R="LM", 
-                                        lamb=1.2, #8e-4,
+                                        num_steps=10,
+                                        R=R, 
+                                        lamb=0.6, #8e-4,
                                         GammaInv=GammaInv,
-                                        clip=[0.001, 5.0],
+                                        clip=[0.001, 3.0],
                                         verbose=True)
 
 
@@ -121,24 +121,26 @@ rel_error_gn = compute_relative_l1_error(sigma_rec, sigma_gt_vsigma)
 fig, (ax1, ax2, ax3) = plt.subplots(1,3, figsize=(19,6))
 
 pred = np.array(sigma_reco_l1_vsigma.x.array[:]).flatten()
-im = ax1.tripcolor(tri, pred, cmap='jet', shading='flat',vmin=0.01, vmax=3.0)
+im = ax1.tripcolor(tri, pred, cmap='jet', shading='flat',vmin=0.01, vmax=2.0)
 ax1.axis('image')
 ax1.set_aspect('equal', adjustable='box')
 ax1.set_title(f"L1-Sparsity, relative L1 error={np.format_float_positional(rel_error_l1,4)}")
 fig.colorbar(im, ax=ax1)
 
 pred = np.array(sigma_gt_vsigma.x.array[:]).flatten()
-im = ax2.tripcolor(tri, pred, cmap='jet', shading='flat',vmin=0.01, vmax=3.0)
+im = ax2.tripcolor(tri, pred, cmap='jet', shading='flat',vmin=0.01, vmax=2.0)
 ax2.axis('image')
 ax2.set_aspect('equal', adjustable='box')
 ax2.set_title("GT")
 fig.colorbar(im, ax=ax2)
 
 pred = np.array(sigma_rec.x.array[:]).flatten()
-im = ax3.tripcolor(tri, pred, cmap='jet', shading='flat', vmin=0.01, vmax=3.0)
+im = ax3.tripcolor(tri, pred, cmap='jet', shading='flat', vmin=0.01, vmax=2.0)
 ax3.axis('image')
 ax3.set_aspect('equal', adjustable='box')
 ax3.set_title(f"Gauss-Newton, relative L1 error={np.format_float_positional(rel_error_gn,4)}")
 fig.colorbar(im, ax=ax3)
+
+plt.savefig("example_reconstruction.png", bbox_inches='tight')
 
 plt.show()
