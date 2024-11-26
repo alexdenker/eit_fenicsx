@@ -14,10 +14,10 @@ def image_to_mesh(x, mesh_pos):
 
     return sigma
 
+
 def interpolate_mesh_to_mesh(x, mesh_pos1, mesh_pos2):
     interpolator = NearestNDInterpolator(mesh_pos1, x)
 
     sigma = interpolator(mesh_pos2[:,0], mesh_pos2[:,1])
-
 
     return sigma

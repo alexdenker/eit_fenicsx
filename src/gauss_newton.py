@@ -21,12 +21,22 @@ class GaussNewtonSolver():
     def reconstruct(self, Umeas: np.array, 
                         sigma_init: Function, 
                         num_steps: int = 40, 
-                        R: torch.Tensor = None, 
+                        R = None, 
+                        lamb: float = 1.0,
                         GammaInv: torch.Tensor = None, 
                         verbose: bool = True, 
                         clip=[0.001, 3.0]):
-        if R is not None:
+        
+        if isinstance(R, str): 
+            if R == "Tikhonov":
+                R = torch.eye(len(sigma_init.x.array[:]), device=self.device)
+            elif R == "LM":
+                pass 
+            else:
+                raise ValueError(f"Unknown string for R: {R}. Choices [Tikhonov, LM]")
+        elif isinstance(R, torch.Tensor):
             R = R.to(self.device)
+
         if GammaInv is not None:
             GammaInv = GammaInv.to(self.device)
 
@@ -54,8 +64,12 @@ class GaussNewtonSolver():
             else:
                 A = J.T @ J
                 b = J.T @ deltaU 
+
             if R is not None:
-                A = A + R
+                if R == "LM":
+                    A = A + lamb*torch.diag(torch.diag(A))
+                else:
+                    A = A + lamb*R
 
             delta_sigma = torch.linalg.solve(A,b).cpu().numpy()
 
