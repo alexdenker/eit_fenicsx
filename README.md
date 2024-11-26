@@ -20,11 +20,29 @@ where $z = (z_1, \dots, z_L)$ are contact impedances. Further, we have an additi
 
 $$ \sum_{l=1}^L U_l = 0. $$
 
-We solve the CEM for a fixed $\sigma$ using a Finite-Element Method. To include the mean-free condition we introduce a Lagrange multiplier $\lambda \in \mathbb{R}$. The weak formulation reads:
+For a fixed $\sigma$ the CEM is linear with respect to the current pattern $I$. We solve the CEM for a fixed $\sigma$ using a Finite-Element Method. To include the mean-free condition we introduce a Lagrange multiplier $\lambda \in \mathbb{R}$. The weak formulation reads:
 
 $$ \int_\Omega \sigma \nabla u \cdot \nabla v dx + \sum_{l=1}^L \frac{1}{z_l} \int_{e_l} (u - U_l)(v - V_l) ds + \sum_{l=1}^L (\lambda V_l + \nu U_l) = \sum_{l=1}^L I_l V_l $$
 
 for $(v, V, \nu) \in H^1(\Omega) \times \mathbb{R}^L \times \mathbb{R}$. Note that the current pattern $I = (I_1, \dots, I_L)$ only appears on the RHS of the equation. When considering the linear system we can reuse intermediate steps, e.g., the LU factorisation of the system matrix, to compute the solution $(u,U)$ for different current patterns $I$. 
+
+We define the forward operator as $F(\sigma)I = U$.
+
+
+### Solving the Inverse Problem
+
+The goal in EIT is to recover the conductivity distribution $\sigma$ from a set of boundary measurements for different applied current patterns: 
+
+> Recover $\sigma$ from measurements $U^{(k)}$ with $F(\sigma)I^{(k)} = U^{(k)}$ for current patterns $I^{(k)}, k=1,\dots, K$
+
+There exist a variety of methods to solve this inverse problems. This repository will contain different reconstruction methods: 
+
+1. Linearised Reconstruction, see e.g. [Kaipio et al. (2000)](https://iopscience.iop.org/article/10.1088/0266-5611/16/5/321)
+2. Gauss-Newton Methods, see e.g. [Borsic et al. (2010)](https://pubmed.ncbi.nlm.nih.gov/20051330/)
+3. L1-Sparsity, see e.g. [Gehre et al. (2012)](https://www.sciencedirect.com/science/article/pii/S0377042711005140)
+
+In addition, data-driven methods will be added at a later point.
+
 
 ## Installation 
 
