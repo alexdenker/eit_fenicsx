@@ -66,7 +66,11 @@ The script `reconstruct_simulated_data.py` contains an example to reconstruct fr
 
 ![Reconstruction](imgs/example_reconstruction.png "Reconstruction")
 
+### Torch Wrapper 
 
+There exist a preliminary version of a torch wrapper in ``src/torch_wrapper.py`` with an example script in ``torch_reconstructor.py``. We use the same experimental setting as before. For the optimiser we make use of ADAM with a fixed step size. 
+
+![Reconstruction](imgs/torch_reconstruction.png "Reconstruction")
 
 ### Citation
 
