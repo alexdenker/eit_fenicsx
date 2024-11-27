@@ -35,7 +35,7 @@ The goal in EIT is to recover the conductivity distribution $\sigma$ from a set 
 
 > Recover $\sigma$ from measurements $U^{(k)}$ with $F(\sigma)I^{(k)} = U^{(k)}$ for current patterns $I^{(k)}, k=1,\dots, K$
 
-There exist a variety of methods to solve this inverse problems. This repository will contain different reconstruction methods: 
+There exist a variety of methods to solve this inverse problem. This repository will contain different reconstruction methods: 
 
 1. Linearised Reconstruction, see e.g. [Kaipio et al. (2000)](https://iopscience.iop.org/article/10.1088/0266-5611/16/5/321)
 2. Gauss-Newton Methods, see e.g. [Borsic et al. (2010)](https://pubmed.ncbi.nlm.nih.gov/20051330/)
@@ -62,7 +62,7 @@ conda install pytorch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 pytorch-cuda=
 
 ## Example 
 
-The script `reconstruct_simulated_data.py` contains an example to reconstruct from (noisy) simulated measurements with both the L1-Sparsity algorithm and a Gauss-Newton method with a Gaussian smoothness regulariser. We use 16 electrodes and apply 15 current injections. The current injection are of the form ``All against 1``, i.e., we apply current between electrodes 1-2,1-3,1-4, ...,1-16. In addition, we add 1% relative Gaussian noise to the measurements. 
+The script `reconstruct_simulated_data.py` contains an example to reconstruct from (noisy) simulated measurements with both the L1-Sparsity algorithm, a Gauss-Newton method with a Gaussian smoothness regulariser and a Gauss-Newton method with a (smoothed) TV regulariser. We use 16 electrodes and apply 15 current injections. The current injection are of the form ``All against 1``, i.e., we apply current between electrodes 1-2,1-3,1-4, ...,1-16. In addition, we add 1% relative Gaussian noise to the measurements. 
 
 ![Reconstruction](imgs/example_reconstruction.png "Reconstruction")
 

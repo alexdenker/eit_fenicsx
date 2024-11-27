@@ -13,7 +13,7 @@ from src.random_ellipses import gen_conductivity
 from src.sparsity_reconstruction import L1Sparsity
 from src.utils import current_method
 from src.regulariser import create_smoothness_regulariser
-from src.gauss_newton import GaussNewtonSolver
+from src.gauss_newton import GaussNewtonSolver, GaussNewtonSolverTV
 
 def compute_relative_l1_error(sigma_rec, sigma_gt):
 
@@ -114,31 +114,63 @@ sigma = gauss_newton_solver.reconstruct(Umeas=Umeas_flatten,
 sigma_rec = Function(solver.V_sigma)
 sigma_rec.x.array[:] = sigma 
 
+sigma_init = Function(solver.V_sigma)
+sigma_init.x.array[:] = backCond
+
+gauss_newton_solver = GaussNewtonSolverTV(solver, device=device)
+
+sigma = gauss_newton_solver.reconstruct(Umeas=Umeas_flatten,
+                                        sigma_init=sigma_init,
+                                        num_steps=12,
+                                        lamb=0.1, #8e-4,
+                                        beta=1e-6,#1e-6,
+                                        GammaInv=GammaInv,
+                                        clip=[0.001, 3.0],
+                                        verbose=True)
+
+
+sigma_rec_tv = Function(solver.V_sigma)
+sigma_rec_tv.x.array[:] = sigma 
+
+
 rel_error_l1 = compute_relative_l1_error(sigma_reco_l1_vsigma, sigma_gt_vsigma)
 rel_error_gn = compute_relative_l1_error(sigma_rec, sigma_gt_vsigma)
+rel_error_tv = compute_relative_l1_error(sigma_rec_tv, sigma_gt_vsigma)
 
-fig, (ax1, ax2, ax3) = plt.subplots(1,3, figsize=(19,6))
+fig, (ax1, ax2, ax3, ax4) = plt.subplots(1,4, figsize=(19,6))
 
-pred = np.array(sigma_reco_l1_vsigma.x.array[:]).flatten()
+pred = np.array(sigma_gt_vsigma.x.array[:]).flatten()
 im = ax1.tripcolor(tri, pred, cmap='jet', shading='flat',vmin=0.01, vmax=2.0)
 ax1.axis('image')
 ax1.set_aspect('equal', adjustable='box')
-ax1.set_title(f"L1-Sparsity, relative L1 error={np.format_float_positional(rel_error_l1,4)}")
-fig.colorbar(im, ax=ax1)
+ax1.set_title("GT")
+fig.colorbar(im, ax=ax1,fraction=0.046, pad=0.04)
+ax1.axis("off")
 
-pred = np.array(sigma_gt_vsigma.x.array[:]).flatten()
+pred = np.array(sigma_reco_l1_vsigma.x.array[:]).flatten()
 im = ax2.tripcolor(tri, pred, cmap='jet', shading='flat',vmin=0.01, vmax=2.0)
 ax2.axis('image')
 ax2.set_aspect('equal', adjustable='box')
-ax2.set_title("GT")
-fig.colorbar(im, ax=ax2)
+ax2.set_title(f"L1-Sparsity, \n relative L1 error={np.format_float_positional(rel_error_l1,4)}")
+fig.colorbar(im, ax=ax2,fraction=0.046, pad=0.04)
+ax2.axis("off")
+
 
 pred = np.array(sigma_rec.x.array[:]).flatten()
 im = ax3.tripcolor(tri, pred, cmap='jet', shading='flat', vmin=0.01, vmax=2.0)
 ax3.axis('image')
 ax3.set_aspect('equal', adjustable='box')
-ax3.set_title(f"Gauss-Newton, relative L1 error={np.format_float_positional(rel_error_gn,4)}")
-fig.colorbar(im, ax=ax3)
+ax3.set_title(f"Gauss-Newton (Smoothness Prior), \n relative L1 error={np.format_float_positional(rel_error_gn,4)}")
+fig.colorbar(im, ax=ax3,fraction=0.046, pad=0.04)
+ax3.axis("off")
+
+pred = np.array(sigma_rec_tv.x.array[:]).flatten()
+im = ax4.tripcolor(tri, pred, cmap='jet', shading='flat', vmin=0.01, vmax=2.0)
+ax4.axis('image')
+ax4.set_aspect('equal', adjustable='box')
+ax4.set_title(f"Gauss-Newton (TV Prior), \n relative L1 error={np.format_float_positional(rel_error_tv,4)}")
+fig.colorbar(im, ax=ax4,fraction=0.046, pad=0.04)
+ax4.axis("off")
 
 plt.savefig("example_reconstruction.png", bbox_inches='tight')
 
