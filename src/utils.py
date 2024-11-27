@@ -46,6 +46,7 @@ def current_method(L,l, method=1, value=1):
         2. 1 and -1 in adjacent electrodes.
         3. 1 in one electrode and -1/(L-1) for the rest.
         4. For measurement k, we have: (sin(k*2*pi/16) sin(2*k*2*pi/16) ... sin(16*k*2*pi/16)).
+        5. All against 1 
 
     :Example:
 
@@ -104,6 +105,15 @@ def current_method(L,l, method=1, value=1):
             for k in range(L): I[k]=I[k]*np.sin((i+1)*(k+1)*2*np.pi/L) 
             I_all.append(I)
 
+    if method==5:
+        for i in range(l):
+            if i <= L-1:
+                I = np.zeros(L)
+                I[0] = -value
+                I[i+1] = value
+                I_all.append(I)
+            else:
+                print("This method only accept until L-1 currents, returning L-1 currents.")
             
     if l==1: I_all=I_all[0]
     return np.array(I_all)

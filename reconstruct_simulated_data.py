@@ -25,14 +25,13 @@ def compute_relative_l1_error(sigma_rec, sigma_gt):
     
     return diff/norm 
 
-
-
 device = "cuda"
 
 L = 16
 backCond = 1.0
 
-Injref = np.concatenate([current_method(L=L, l=L//2, method=1,value=1.5), current_method(L=L, l=L, method=2,value=1.5)])
+#Injref = np.concatenate([current_method(L=L, l=L//2, method=1,value=1.5), current_method(L=L, l=L, method=2,value=1.5)])
+Injref = current_method(L=L, l=L-1, method=5,value=1.5)
 
 z = 1e-6*np.ones(L)
 solver = EIT(L, Injref, z, backend="Scipy", mesh_name="data/KIT4_mesh_coarse.msh")
@@ -63,8 +62,8 @@ Umeas = Umeas + np.sqrt(var_meas) * np.random.normal(size=Umeas.shape)
 l1 = 0.01 # smallest possible conductivity 
 l2 = 4.0 # largest conductivity 
 
-alpha = 0.001 #0.0001
-kappa = 0.03
+alpha = 0.00135 #0.0001
+kappa = 0.0285
 
 l1_reconstructor = L1Sparsity(eit_solver=solver,
                             backCond=backCond,
@@ -106,7 +105,7 @@ sigma = gauss_newton_solver.reconstruct(Umeas=Umeas_flatten,
                                         sigma_init=sigma_init,
                                         num_steps=10,
                                         R=R, 
-                                        lamb=0.6, #8e-4,
+                                        lamb=0.2, #8e-4,
                                         GammaInv=GammaInv,
                                         clip=[0.001, 3.0],
                                         verbose=True)

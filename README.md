@@ -62,7 +62,7 @@ conda install pytorch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 pytorch-cuda=
 
 ## Example 
 
-The script `reconstruct_simulated_data.py` contains an example to reconstruct from (noisy) simulated measurements with both the L1-Sparsity algorithm and a Gauss-Newton method with a Gaussian smoothness regulariser. 
+The script `reconstruct_simulated_data.py` contains an example to reconstruct from (noisy) simulated measurements with both the L1-Sparsity algorithm and a Gauss-Newton method with a Gaussian smoothness regulariser. We use 16 electrodes and apply 15 current injections. The current injection are of the form ``All against 1``, i.e., we apply current between electrodes 1-2,1-3,1-4, ...,1-16. In addition, we add 1% relative Gaussian noise to the measurements. 
 
 ![Reconstruction](imgs/example_reconstruction.png "Reconstruction")
 
