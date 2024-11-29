@@ -72,6 +72,13 @@ There exist a preliminary version of a torch wrapper in ``src/torch_wrapper.py``
 
 ![Reconstruction](imgs/torch_reconstruction.png "Reconstruction")
 
+### KIT4 Data
+
+I tested the code also on the KIT4 dataset, available on [zenodo](https://zenodo.org/records/1203914). Example reconstructions are below:
+
+![Reconstruction](imgs/KIT4_reconstruction_22.png "Reconstruction")
+
+
 ### Citation
 
 If you use this FEM solver in your work, please cite:
