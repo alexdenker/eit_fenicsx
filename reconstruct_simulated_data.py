@@ -69,7 +69,7 @@ l1_reconstructor = L1Sparsity(eit_solver=solver,
                             backCond=backCond,
                             kappa=kappa,
                             clip=[l1,l2],
-                            max_iter=200,
+                            max_iter=1,
                             stopping_criterion=5e-4,
                             step_min=1e-6,
                             initial_step_size=0.2)
@@ -103,7 +103,7 @@ gauss_newton_solver = GaussNewtonSolver(solver, device=device)
 
 sigma = gauss_newton_solver.reconstruct(Umeas=Umeas_flatten,
                                         sigma_init=sigma_init,
-                                        num_steps=10,
+                                        num_steps=1,
                                         R=R, 
                                         lamb=0.2, #8e-4,
                                         GammaInv=GammaInv,
@@ -121,8 +121,8 @@ gauss_newton_solver = GaussNewtonSolverTV(solver, device=device)
 
 sigma = gauss_newton_solver.reconstruct(Umeas=Umeas_flatten,
                                         sigma_init=sigma_init,
-                                        num_steps=12,
-                                        lamb=0.1, #8e-4,
+                                        num_steps=10,
+                                        lamb=0.2, #8e-4,
                                         beta=1e-6,#1e-6,
                                         GammaInv=GammaInv,
                                         clip=[0.001, 3.0],
@@ -171,7 +171,5 @@ ax4.set_aspect('equal', adjustable='box')
 ax4.set_title(f"Gauss-Newton (TV Prior), \n relative L1 error={np.format_float_positional(rel_error_tv,4)}")
 fig.colorbar(im, ax=ax4,fraction=0.046, pad=0.04)
 ax4.axis("off")
-
-plt.savefig("example_reconstruction.png", bbox_inches='tight')
 
 plt.show()

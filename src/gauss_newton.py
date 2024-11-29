@@ -26,6 +26,7 @@ class GaussNewtonSolver():
                         lamb: float = 1.0,
                         GammaInv: torch.Tensor = None, 
                         verbose: bool = True, 
+                        Uel_background: np.array = None,
                         clip=[0.001, 3.0]):
         
         if isinstance(R, str): 
@@ -60,7 +61,10 @@ class GaussNewtonSolver():
 
                 J = self.eit_solver.calc_jacobian(sigma_k, u_all)
 
-                deltaU = Usim - Umeas
+                if Uel_background is not None and i == 0:
+                    deltaU = Uel_background.flatten() - Umeas 
+                else:
+                    deltaU = Usim - Umeas
 
                 J = torch.from_numpy(J).float().to(self.device)
                 deltaU = torch.from_numpy(deltaU).float().to(self.device)
@@ -166,6 +170,7 @@ class GaussNewtonSolverTV():
                         beta: float = 1.0,
                         GammaInv: torch.Tensor = None, 
                         verbose: bool = True, 
+                        Uel_background: np.array = None, 
                         clip=[0.001, 3.0]):
 
         if GammaInv is not None:
@@ -190,7 +195,10 @@ class GaussNewtonSolverTV():
 
                 J = self.eit_solver.calc_jacobian(sigma_k, u_all)
 
-                deltaU = Usim - Umeas
+                if Uel_background is not None and i == 0:
+                    deltaU = Uel_background.flatten() - Umeas 
+                else:
+                    deltaU = Usim - Umeas
 
                 J = torch.from_numpy(J).float().to(self.device)
                 deltaU = torch.from_numpy(deltaU).float().to(self.device)

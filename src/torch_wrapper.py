@@ -83,7 +83,7 @@ class CEMTorch(torch.autograd.Function):
         val = torch.zeros(batches, eit_solver.Inj.shape[0], eit_solver.L, dtype=torch.double, device=sigma_torch.device)
         ctx.us = [] 
         for b in range(batches):
-            sigma_fenics = Function(ctx.function_space)
+            sigma_fenics = Function(eit_solver.V_sigma) #Function(ctx.function_space)
             sigma_fenics.x.array[:] = sigma_np[b]
             u, tmp = eit_solver.forward_solve(sigma_fenics)
             val[b] = torch.tensor(np.array(tmp), dtype=torch.double, device=sigma_torch.device)
@@ -139,7 +139,10 @@ class CEMTorch(torch.autograd.Function):
             sigma_update = Function(function_space)
             sigma_update.interpolate(Dsigma_sum)
 
-            sigma_update_np = np.array(sigma_update.x.array[:])/len(p_list)
+            sigma_update_ = Function(ctx.eit_solver.V_sigma)
+            sigma_update_.interpolate(sigma_update)
+
+            sigma_update_np = np.array(sigma_update_.x.array[:])/len(p_list)
             grad_torch[batch] = torch.tensor(sigma_update_np, dtype=torch.double,device=ctx.sigma_torch.device)
 
         return grad_torch, None, None, None, None, None, None, None 
