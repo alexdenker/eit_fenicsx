@@ -20,7 +20,7 @@ def image_to_mesh(x, mesh_pos):
     pixcenter_x = pixcenter_y = np.linspace(-radius, radius, 256)
     X, Y = np.meshgrid(pixcenter_x, pixcenter_y, indexing="ij")
 
-    sigma = interpn([pixcenter_x, pixcenter_y], x, mesh_pos, 
+    sigma = interpn([pixcenter_x, pixcenter_y], np.flipud(x).T, mesh_pos, 
         bounds_error=False, fill_value=1.0, method="nearest")
 
     return sigma
