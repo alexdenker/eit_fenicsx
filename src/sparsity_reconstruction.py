@@ -26,6 +26,7 @@ import ufl
 from tqdm import tqdm
 
 from src.eit_forward_fenicsx import EIT
+from src.reconstructor import Reconstructor
 
 class GradientSmoother():
         def __init__(self, A_smooth, dofs, backend="Scipy"):
@@ -42,7 +43,7 @@ class GradientSmoother():
             return self.smooting_solver(b)
 
 
-class L1Sparsity():
+class L1Sparsity(Reconstructor):
     def __init__(self, eit_solver: EIT, 
                        backCond: float = 1.0,
                        kappa: float = 0.01,
@@ -51,9 +52,10 @@ class L1Sparsity():
                        stopping_criterion=5e-4, 
                        step_min=1e-6,
                        s = 1e-10,
-                       initial_step_size=0.25):
-
-        self.eit_solver = eit_solver
+                       initial_step_size=0.25, 
+                       alpha = 7e-4,
+                       **kwargs):
+        super().__init__(eit_solver) 
 
         self.backCond = backCond
         self.L = self.eit_solver.L
@@ -63,7 +65,7 @@ class L1Sparsity():
         self.step_min = step_min 
         self.s = s 
         self.initial_step_size = initial_step_size
-
+        self.alpha = alpha
         # smallest / biggest allowed conductivity 
         self.l1 = clip[0]
         self.l2 = clip[1]
@@ -85,16 +87,17 @@ class L1Sparsity():
         self.sigma_background = Function(self.eit_solver.V) 
         self.sigma_background.interpolate(lambda x: self.backCond*np.ones_like(x[0]))
 
-    def reconstruct(self, Umeas, alpha: float = 7e-4, verbose=True):
+    def forward(self, Umeas, **kwargs):
         """
         Umeas: numpy array [num_pattern, num_electrodes]
-        alpha: regularisation parameter        
         
         """
+        verbose = kwargs.get("verbose", False)
+
         sigma_iter = Function(self.eit_solver.V) 
         
         # We re-scale alpha by the number of current pattern to make the same alpha perform well for different pattern sizes
-        alpha = Umeas.shape[0] * alpha 
+        alpha = Umeas.shape[0] * self.alpha 
 
         ### Placeholder for the functions u and p in the rhs 
         u_placeholder = Function(self.eit_solver.V)
@@ -176,7 +179,7 @@ class L1Sparsity():
                 pbar.update(1)
         
         print(f"Stopping criterion reached at iteration {step}")
-        return sigma_j, full_loss_list
+        return sigma_j
 
     def compute_gradient(self, u_list, p_list, b, L, u_placeholder, p_placeholder):
 

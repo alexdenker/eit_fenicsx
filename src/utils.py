@@ -1,7 +1,18 @@
 import numpy as np 
 from scipy.interpolate import interpn, NearestNDInterpolator
 
+from dolfinx.fem import assemble_scalar, form
+import ufl 
 
+def compute_relative_l1_error(sigma_rec, sigma_gt):
+
+    diff = abs(sigma_rec - sigma_gt) * ufl.dx 
+    diff = assemble_scalar(form(diff))
+
+    norm = abs(sigma_gt) * ufl.dx
+    norm = assemble_scalar(form(norm))
+    
+    return diff/norm 
 
 def image_to_mesh(x, mesh_pos):
     radius = np.max(np.abs(mesh_pos))

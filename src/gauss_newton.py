@@ -11,46 +11,62 @@ from dolfinx.fem import Function
 from scipy.sparse import csr_array
 
 from src.eit_forward_fenicsx import EIT
+from src.reconstructor import Reconstructor
 
-class GaussNewtonSolver():
-    def __init__(self, eit_solver: EIT, device: str ="cpu"):
+class GaussNewtonSolver(Reconstructor):
+    def __init__(self, eit_solver: EIT, 
+                       device: str ="cpu",
+                       num_steps: int = 40,
+                       R = None,
+                       lamb: float = 1.0,
+                       GammaInv: torch.Tensor = None, 
+                       Uel_background: np.array = None,
+                       clip=[0.001, 3.0],
+                       backCond: float = 1.0,
+                       ):
+        super().__init__(eit_solver) 
 
-        self.eit_solver = eit_solver
         self.device = device
 
+        self.num_steps = num_steps
+        self.R = R 
+        self.lamb = lamb 
+        self.GammaInv = GammaInv 
+        self.Uel_background = Uel_background
+        self.clip = clip 
+        self.backCond = backCond
 
-    def reconstruct(self, Umeas: np.array, 
-                        sigma_init: Function, 
-                        num_steps: int = 40, 
-                        R = None, 
-                        lamb: float = 1.0,
-                        GammaInv: torch.Tensor = None, 
-                        verbose: bool = True, 
-                        Uel_background: np.array = None,
-                        clip=[0.001, 3.0]):
-        
-        if isinstance(R, str): 
-            if R == "Tikhonov":
+    def forward(self, Umeas: np.array, **kwargs):
+        Umeas = Umeas.flatten() 
+
+        verbose = kwargs.get("verbose", False)
+        sigma_init = kwargs.get("sigma_init", None)
+
+        if sigma_init is None:
+            sigma_init = Function(self.eit_solver.V_sigma)
+            sigma_init.x.array[:] = self.backCond
+
+        if isinstance(self.R, str): 
+            if self.R == "Tikhonov":
                 R = torch.eye(len(sigma_init.x.array[:]), device=self.device)
-            elif R == "LM":
+            elif self.R == "LM":
                 pass 
             else:
                 raise ValueError(f"Unknown string for R: {R}. Choices [Tikhonov, LM]")
         elif isinstance(R, torch.Tensor):
             R = R.to(self.device)
 
-        if GammaInv is not None:
-            GammaInv = GammaInv.to(self.device)
+        if self.GammaInv is not None:
+            self.GammaInv = self.GammaInv.to(self.device)
 
         sigma = sigma_init.x.array[:]
-
 
         sigma_old = Function(self.eit_solver.V_sigma)
 
         disable = not verbose
-        with tqdm(total=num_steps, disable=disable) as pbar:
+        with tqdm(total=self.num_steps, disable=disable) as pbar:
 
-            for i in range(num_steps):
+            for i in range(self.num_steps):
                 sigma_k = Function(self.eit_solver.V_sigma)
                 sigma_k.x.array[:] = sigma
 
@@ -61,26 +77,26 @@ class GaussNewtonSolver():
 
                 J = self.eit_solver.calc_jacobian(sigma_k, u_all)
 
-                if Uel_background is not None and i == 0:
-                    deltaU = Uel_background.flatten() - Umeas 
+                if self.Uel_background is not None and i == 0:
+                    deltaU = self.Uel_background.flatten() - Umeas 
                 else:
                     deltaU = Usim - Umeas
 
                 J = torch.from_numpy(J).float().to(self.device)
                 deltaU = torch.from_numpy(deltaU).float().to(self.device)
 
-                if GammaInv is not None:
-                    A = J.T @ torch.diag(GammaInv) @ J   
-                    b = J.T @ torch.diag(GammaInv) @ deltaU 
+                if self.GammaInv is not None:
+                    A = J.T @ torch.diag(self.GammaInv) @ J   
+                    b = J.T @ torch.diag(self.GammaInv) @ deltaU 
                 else:
                     A = J.T @ J
                     b = J.T @ deltaU 
 
                 if R is not None:
                     if R == "LM":
-                        A = A + lamb*torch.diag(torch.diag(A)) + lamb/2. * torch.eye(len(sigma_init.x.array[:]), device=self.device)
+                        A = A + self.lamb*torch.diag(torch.diag(A)) + self.lamb/2. * torch.eye(len(sigma_init.x.array[:]), device=self.device)
                     else:
-                        A = A + lamb*R 
+                        A = A + self.lamb*R 
 
                 delta_sigma = torch.linalg.solve(A,b).cpu().numpy()
 
@@ -90,7 +106,7 @@ class GaussNewtonSolver():
                 for step_size in step_sizes:
                     sigma_new = sigma + step_size*delta_sigma
 
-                    sigma_new = np.clip(sigma_new, clip[0], clip[1])
+                    sigma_new = np.clip(sigma_new, self.clip[0], self.clip[1])
 
                     sigmanew = Function(self.eit_solver.V_sigma)
                     sigmanew.x.array[:] = sigma_new
@@ -103,7 +119,7 @@ class GaussNewtonSolver():
 
                 sigma = sigma + step_size*delta_sigma
 
-                sigma = np.clip(sigma, clip[0], clip[1])
+                sigma = np.clip(sigma, self.clip[0], self.clip[1])
 
                 s = np.linalg.norm(sigma - sigma_old.x.array[:])/np.linalg.norm(sigma)
                 loss = np.min(losses)
@@ -111,16 +127,34 @@ class GaussNewtonSolver():
                 pbar.set_description(f"Relative Change: {np.format_float_positional(s, 4)} | Obj. fun: {np.format_float_positional(loss, 4)} | Step size: {np.format_float_positional(step_size, 4)}")
                 pbar.update(1)
 
-        return sigma
+        sigma_reco = Function(self.eit_solver.V_sigma)
+        sigma_reco.x.array[:] = sigma.flatten()
+        return sigma_reco
     
 
-class GaussNewtonSolverTV():
-    def __init__(self, eit_solver: EIT, device: str ="cpu"):
+class GaussNewtonSolverTV(Reconstructor):
+    def __init__(self, eit_solver: EIT, 
+                        device: str ="cpu",
+                        num_steps: int = 8, 
+                        lamb: float = 0.04,
+                        beta: float = 1e-6,
+                        GammaInv: torch.Tensor = None, 
+                        Uel_background: np.array = None, 
+                        clip=[0.001, 3.0],
+                        **kwargs):
 
-        self.eit_solver = eit_solver
+        super().__init__(eit_solver) 
+
         self.device = device
 
         self.Ltv = self.construct_tv_matrix()
+
+        self.num_steps = num_steps
+        self.lamb = lamb 
+        self.beta = beta 
+        self.GammaInv = GammaInv
+        self.Uel_background = Uel_background
+        self.clip = clip 
 
     def construct_tv_matrix(self):
 
@@ -163,28 +197,27 @@ class GaussNewtonSolverTV():
         # CUDA does currently not really support CSR tensors
         #return torch.sparse_csr_tensor(torch.tensor(rows), torch.tensor(cols), torch.tensor(data), dtype=torch.float64,size=(row_idx, num_cells))
 
-    def reconstruct(self, Umeas: np.array, 
-                        sigma_init: Function, 
-                        num_steps: int = 40, 
-                        lamb: float = 1.0,
-                        beta: float = 1.0,
-                        GammaInv: torch.Tensor = None, 
-                        verbose: bool = True, 
-                        Uel_background: np.array = None, 
-                        clip=[0.001, 3.0]):
+    def forward(self, Umeas: np.array, **kwargs):
+        Umeas = Umeas.flatten() 
 
-        if GammaInv is not None:
-            GammaInv = GammaInv.to(self.device)
+        verbose = kwargs.get("verbose", False)
+        sigma_init = kwargs.get("sigma_init", None)
+
+        if sigma_init is None:
+            sigma_init = Function(self.eit_solver.V_sigma)
+            sigma_init.x.array[:] = self.backCond
+
+        if self.GammaInv is not None:
+            GammaInv = self.GammaInv.to(self.device)
 
         sigma = sigma_init.x.array[:]
-
 
         sigma_old = Function(self.eit_solver.V_sigma)
 
         disable = not verbose
-        with tqdm(total=num_steps, disable=disable) as pbar:
+        with tqdm(total=self.num_steps, disable=disable) as pbar:
 
-            for i in range(num_steps):
+            for i in range(self.num_steps):
                 sigma_k = Function(self.eit_solver.V_sigma)
                 sigma_k.x.array[:] = sigma
 
@@ -195,8 +228,8 @@ class GaussNewtonSolverTV():
 
                 J = self.eit_solver.calc_jacobian(sigma_k, u_all)
 
-                if Uel_background is not None and i == 0:
-                    deltaU = Uel_background.flatten() - Umeas 
+                if self.Uel_background is not None and i == 0:
+                    deltaU = self.Uel_background.flatten() - Umeas 
                 else:
                     deltaU = Usim - Umeas
 
@@ -211,11 +244,11 @@ class GaussNewtonSolverTV():
                     b = J.T @ deltaU 
 
                 L_sigma = np.abs(self.Ltv @ np.array(sigma_k.x.array[:]))**2
-                eta = np.sqrt(L_sigma + beta)
+                eta = np.sqrt(L_sigma + self.beta)
                 E = np.diag(1/eta)
 
-                A = A + torch.from_numpy(lamb * self.Ltv.T @ E @ self.Ltv).float().to(self.device)
-                b = b - torch.from_numpy(lamb * self.Ltv.T @ E @ self.Ltv @ sigma_k.x.array[:]).float().to(self.device)
+                A = A + torch.from_numpy(self.lamb * self.Ltv.T @ E @ self.Ltv).float().to(self.device)
+                b = b - torch.from_numpy(self.lamb * self.Ltv.T @ E @ self.Ltv @ sigma_k.x.array[:]).float().to(self.device)
 
                 delta_sigma = torch.linalg.solve(A,b).cpu().numpy()
 
@@ -225,7 +258,7 @@ class GaussNewtonSolverTV():
                 for step_size in step_sizes:
                     sigma_new = sigma + step_size*delta_sigma
 
-                    sigma_new = np.clip(sigma_new, clip[0], clip[1])
+                    sigma_new = np.clip(sigma_new, self.clip[0], self.clip[1])
 
                     sigmanew = Function(self.eit_solver.V_sigma)
                     sigmanew.x.array[:] = sigma_new
@@ -238,7 +271,7 @@ class GaussNewtonSolverTV():
 
                 sigma = sigma + step_size*delta_sigma
 
-                sigma = np.clip(sigma, clip[0], clip[1])
+                sigma = np.clip(sigma, self.clip[0], self.clip[1])
 
                 s = np.linalg.norm(sigma - sigma_old.x.array[:])/np.linalg.norm(sigma)
                 loss = np.min(losses)
@@ -246,4 +279,6 @@ class GaussNewtonSolverTV():
                 pbar.set_description(f"Relative Change: {np.format_float_positional(s, 4)} | Obj. fun: {np.format_float_positional(loss, 4)} | Step size: {np.format_float_positional(step_size, 4)}")
                 pbar.update(1)
 
-        return sigma
+        sigma_reco = Function(self.eit_solver.V_sigma)
+        sigma_reco.x.array[:] = sigma.flatten()
+        return sigma_reco
