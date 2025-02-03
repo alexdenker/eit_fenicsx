@@ -1,18 +1,19 @@
-import numpy as np 
+import numpy as np
 from scipy.interpolate import interpn, NearestNDInterpolator
 
 from dolfinx.fem import assemble_scalar, form
-import ufl 
+import ufl
+
 
 def compute_relative_l1_error(sigma_rec, sigma_gt):
-
-    diff = abs(sigma_rec - sigma_gt) * ufl.dx 
+    diff = abs(sigma_rec - sigma_gt) * ufl.dx
     diff = assemble_scalar(form(diff))
 
     norm = abs(sigma_gt) * ufl.dx
     norm = assemble_scalar(form(norm))
-    
-    return diff/norm 
+
+    return diff / norm
+
 
 def image_to_mesh(x, mesh_pos):
     radius = np.max(np.abs(mesh_pos))
@@ -20,8 +21,14 @@ def image_to_mesh(x, mesh_pos):
     pixcenter_x = pixcenter_y = np.linspace(-radius, radius, 256)
     X, Y = np.meshgrid(pixcenter_x, pixcenter_y, indexing="ij")
 
-    sigma = interpn([pixcenter_x, pixcenter_y], np.flipud(x).T, mesh_pos, 
-        bounds_error=False, fill_value=1.0, method="nearest")
+    sigma = interpn(
+        [pixcenter_x, pixcenter_y],
+        np.flipud(x).T,
+        mesh_pos,
+        bounds_error=False,
+        fill_value=1.0,
+        method="nearest",
+    )
 
     return sigma
 
@@ -29,12 +36,12 @@ def image_to_mesh(x, mesh_pos):
 def interpolate_mesh_to_mesh(x, mesh_pos1, mesh_pos2):
     interpolator = NearestNDInterpolator(mesh_pos1, x)
 
-    sigma = interpolator(mesh_pos2[:,0], mesh_pos2[:,1])
+    sigma = interpolator(mesh_pos2[:, 0], mesh_pos2[:, 1])
 
     return sigma
 
 
-def current_method(L,l, method=1, value=1):
+def current_method(L, l, method=1, value=1):
     """
     Create a numpy array (or a list of arrays) that represents the current pattern in the electrodes.
 
@@ -57,7 +64,7 @@ def current_method(L,l, method=1, value=1):
         2. 1 and -1 in adjacent electrodes.
         3. 1 in one electrode and -1/(L-1) for the rest.
         4. For measurement k, we have: (sin(k*2*pi/16) sin(2*k*2*pi/16) ... sin(16*k*2*pi/16)).
-        5. All against 1 
+        5. All against 1
 
     :Example:
 
@@ -80,58 +87,64 @@ def current_method(L,l, method=1, value=1):
         array([ 1.,  0.,  0., -1.])]
 
     """
-    I_all=[]
-    #Type "(1,0,0,0,-1,0,0,0)"
-    if method==1:
-        if L%2!=0: raise Exception("L must be odd.")
-                                   
-        for i in range(l):
-            if i<=L/2-1:
-                I=np.zeros(L)
-                I[i], I[i+int(L/2)]=value, -value
-                I_all.append(I)
-            elif i==L/2:
-                print("This method only accept until L/2 currents, returning L/2 currents.")
-    #Type "(1,-1,0,0...)"
-    if method==2:
-        for i in range(l):
-            if i!=L-1:
-                I=np.zeros(L)
-                I[i], I[i+1]=value, -value
-                I_all.append(I)
-            else: 
-                I=np.zeros(L)
-                I[0], I[i]=-value, value
-                I_all.append(I)
-    #Type "(1,-1/15, -1/15, ....)"
-    if method==3:
-        for i in range(l):
-            I=np.ones(L)*-value/(L-1)
-            I[i]=value
-            I_all.append(I)
-    #Type "(sin(k*2*pi/16) sin(2*k*2*pi/16) ... sin(16*k*2*pi/16))"
-    if method==4:
-        for i in range(l):
-            I=np.ones(L)
-            for k in range(L): I[k]=I[k]*np.sin((i+1)*(k+1)*2*np.pi/L) 
-            I_all.append(I)
+    I_all = []
+    # Type "(1,0,0,0,-1,0,0,0)"
+    if method == 1:
+        if L % 2 != 0:
+            raise Exception("L must be odd.")
 
-    if method==5:
         for i in range(l):
-            if i <= L-1:
+            if i <= L / 2 - 1:
                 I = np.zeros(L)
-                I[0] = -value
-                I[i+1] = value
+                I[i], I[i + int(L / 2)] = value, -value
+                I_all.append(I)
+            elif i == L / 2:
+                print(
+                    "This method only accept until L/2 currents, returning L/2 currents."
+                )
+    # Type "(1,-1,0,0...)"
+    if method == 2:
+        for i in range(l):
+            if i != L - 1:
+                I = np.zeros(L)
+                I[i], I[i + 1] = value, -value
                 I_all.append(I)
             else:
-                print("This method only accept until L-1 currents, returning L-1 currents.")
-            
-    if l==1: I_all=I_all[0]
+                I = np.zeros(L)
+                I[0], I[i] = -value, value
+                I_all.append(I)
+    # Type "(1,-1/15, -1/15, ....)"
+    if method == 3:
+        for i in range(l):
+            I = np.ones(L) * -value / (L - 1)
+            I[i] = value
+            I_all.append(I)
+    # Type "(sin(k*2*pi/16) sin(2*k*2*pi/16) ... sin(16*k*2*pi/16))"
+    if method == 4:
+        for i in range(l):
+            I = np.ones(L)
+            for k in range(L):
+                I[k] = I[k] * np.sin((i + 1) * (k + 1) * 2 * np.pi / L)
+            I_all.append(I)
+
+    if method == 5:
+        for i in range(l):
+            if i <= L - 1:
+                I = np.zeros(L)
+                I[0] = -value
+                I[i + 1] = value
+                I_all.append(I)
+            else:
+                print(
+                    "This method only accept until L-1 currents, returning L-1 currents."
+                )
+
+    if l == 1:
+        I_all = I_all[0]
     return np.array(I_all)
 
 
 if __name__ == "__main__":
-
     Inj_ref = current_method(L=16, l=16, method=2)
 
     print(Inj_ref)
