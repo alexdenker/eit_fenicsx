@@ -36,7 +36,7 @@ class KIT4Dataset(Dataset):
         self.img_path = img_path
         self.inj_mode = inj_mode
 
-        data = loadmat(os.path.join(self.base_path, "datamat_2_2.mat"))
+        data = loadmat(os.path.join(self.base_path, "datamat_1_0.mat"))
 
         B = data["MeasPattern"].T
         self.Bf = np.vstack([B, np.ones(B.shape[-1])])
@@ -59,6 +59,10 @@ class KIT4Dataset(Dataset):
 
         self.files.sort(key=sort_fun)
         self.photos.sort(key=sort_fun)
+
+        self.Uel_background = data["Uel"].T
+        if self.inj_mode == "all_against_1":
+            self.Uel_background = self.Uel_background[-15:, :]
 
         # self.sigma_files = [f for f in os.listdir(os.path.join(self.base_path, self.part)) if f.startswith("sigma")]
         # self.sigma_files.sort()

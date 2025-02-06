@@ -185,17 +185,17 @@ class LinearisedReconstruction(Reconstructor):
 
         lamb = kwargs.get("lamb", None)
         if lamb is None:
-            lamb = self.lamb 
+            lamb = self.lamb
             print(f"No regularisation was specified, use {lamb}")
 
-        #if isinstance(self.R, str):
+        # if isinstance(self.R, str):
         #    if self.R == "Tikhonov":
         #        R = torch.eye(self.J.shape[1], device=self.device)
         #    elif self.R == "LM":
         #        pass
         #    else:
         #        raise ValueError(f"Unknown string for R: {self.R}. Choices [Tikhonov, LM]")
-        #elif isinstance(self.R, torch.Tensor):
+        # elif isinstance(self.R, torch.Tensor):
         #    R = self.R.to(self.device)
 
         if self.GammaInv is not None:
@@ -211,7 +211,7 @@ class LinearisedReconstruction(Reconstructor):
             A = self.J.T @ self.J
             b = self.J.T @ deltaU
 
-        #if self.R is not None:
+        # if self.R is not None:
         #    if isinstance(self.R, str):
         #        if self.R == "LM":
         #            A = (

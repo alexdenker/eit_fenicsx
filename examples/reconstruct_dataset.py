@@ -1,7 +1,7 @@
 import numpy as np
 import os
 import time
-import sys 
+import sys
 
 import yaml
 import matplotlib.pyplot as plt
@@ -12,7 +12,7 @@ from omegaconf import OmegaConf
 
 from dolfinx.fem import Function
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from src.eit_forward_fenicsx import EIT
 from src.sparsity_reconstruction import L1Sparsity
 from src.utils import compute_relative_l1_error, mean_dice_score
@@ -21,7 +21,7 @@ from src.data_driven_reconstructors import FCUnet
 
 from ellipses_dataset import EllipsesDataset
 from kit4_dataset import KIT4Dataset
-import time 
+import time
 
 import argparse
 
@@ -29,7 +29,7 @@ parser = argparse.ArgumentParser(description="conditional sampling")
 
 parser.add_argument("--method", default="l1_sparsity")
 parser.add_argument("--dataset", default="ellipses")  # ellipses or kit4
-parser.add_argument("--part", default="val" )
+parser.add_argument("--part", default="val")
 # used for l1 sparsity
 parser.add_argument("--alpha", default=0.0001)
 parser.add_argument("--kappa", default=0.0285)
@@ -100,7 +100,7 @@ def main(args):
         dataset = EllipsesDataset(part="test", inj_mode=inj_mode)
         z = 1e-6 * np.ones(L)
 
-        max_idx = len(dataset) #min(10, len(dataset))
+        max_idx = len(dataset)  # min(10, len(dataset))
     elif str(args.dataset) == "kit4":
         dataset = KIT4Dataset(inj_mode=inj_mode)
         z = np.array(
@@ -139,7 +139,7 @@ def main(args):
     tri = Triangulation(xy[:, 0], xy[:, 1], cells)
 
     sigma_gt_vsigma = Function(solver.V_sigma)
-    #print("Len: ", len(sigma_gt_vsigma.x.array[:]))
+    # print("Len: ", len(sigma_gt_vsigma.x.array[:]))
 
     if method == "l1_sparsity":
         reconstructor = L1Sparsity(
@@ -168,7 +168,10 @@ def main(args):
         )
         reconstructor.model.eval()
 
-        print("Number of parameters: ", sum([p.numel() for p in reconstructor.model.parameters()]))
+        print(
+            "Number of parameters: ",
+            sum([p.numel() for p in reconstructor.model.parameters()]),
+        )
     elif method == "linearised_reco":
         if isinstance(dataset, KIT4Dataset):
             Uel_background = dataset.Uel_background
@@ -189,7 +192,7 @@ def main(args):
             lamb=config.lamb,
             Uel_background=Uel_background,
             clip=[config.l1, config.l2],
-            backCond=config.backCond
+            backCond=config.backCond,
         )
     else:
         raise NotImplementedError
@@ -198,7 +201,7 @@ def main(args):
 
     rel_error_l1_list = []
     dice_score_list = []
-    inf_time_list = [] 
+    inf_time_list = []
     for idx in range(max_idx):
         if isinstance(dataset, EllipsesDataset):
             s, U = dataset[idx]
@@ -213,7 +216,7 @@ def main(args):
         if part == "val" and isinstance(dataset, EllipsesDataset):
             # add noise to validation data
             Umeas = Umeas + delta * np.mean(np.abs(Umeas)) * np.random.normal(
-            size=Umeas.shape
+                size=Umeas.shape
             )
 
         if method == "gn_tv" or method == "linearised_reco":
@@ -231,11 +234,14 @@ def main(args):
         sigma_reco = reconstructor.forward(
             Umeas=Umeas, verbose=True, sigma_init=sigma_init
         )
-        t_end = time.time() 
+        t_end = time.time()
         inf_time_list.append(t_end - t_start)
         if isinstance(dataset, EllipsesDataset):
-            
-            dice_score = mean_dice_score(np.array(sigma_reco.x.array[:]).flatten(), np.array(sigma_gt_vsigma.x.array[:]).flatten(), backCond=config.backCond)
+            dice_score = mean_dice_score(
+                np.array(sigma_reco.x.array[:]).flatten(),
+                np.array(sigma_gt_vsigma.x.array[:]).flatten(),
+                backCond=config.backCond,
+            )
             dice_score_list.append(dice_score)
 
             rel_error_l1 = compute_relative_l1_error(sigma_reco, sigma_gt_vsigma)
@@ -296,7 +302,7 @@ def main(args):
             axes[1, 1].axis("off")
 
             plt.savefig(os.path.join(save_dir, "imgs", f"img_{idx}.png"))
-            #plt.show()
+            # plt.show()
             plt.close()
 
         elif isinstance(dataset, KIT4Dataset):
