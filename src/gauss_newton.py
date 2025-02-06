@@ -142,6 +142,99 @@ class GaussNewtonSolver(Reconstructor):
         return sigma_reco
 
 
+class LinearisedReconstruction(Reconstructor):
+    def __init__(
+        self,
+        eit_solver: EIT,
+        device: str = "cpu",
+        R=None,
+        lamb: float = 1.0,
+        GammaInv: torch.Tensor = None,
+        Uel_background: np.array = None,
+        clip=[0.001, 3.0],
+        backCond: float = 1.0,
+    ):
+        super().__init__(eit_solver)
+
+        self.device = device
+
+        self.R = R
+        self.lamb = lamb
+        self.GammaInv = GammaInv
+        self.Uel_background = Uel_background
+        self.clip = clip
+        self.backCond = backCond
+
+        self.J = self.calculate_jacobian()
+        self.J = torch.from_numpy(self.J).float().to(self.device)
+        print("Shape of Jacobian: ", self.J.shape)
+
+    def calculate_jacobian(self):
+        sigma_k = Function(self.eit_solver.V_sigma)
+        sigma_k.x.array[:] = self.backCond
+
+        u_all, Usim = self.eit_solver.forward_solve(sigma_k)
+        Usim = np.asarray(Usim).flatten()
+
+        J = self.eit_solver.calc_jacobian(sigma_k, u_all)
+
+        return J
+
+    def forward(self, Umeas: np.array, **kwargs):
+        Umeas = Umeas.flatten()
+
+        lamb = kwargs.get("lamb", None)
+        if lamb is None:
+            lamb = self.lamb 
+            print(f"No regularisation was specified, use {lamb}")
+
+        #if isinstance(self.R, str):
+        #    if self.R == "Tikhonov":
+        #        R = torch.eye(self.J.shape[1], device=self.device)
+        #    elif self.R == "LM":
+        #        pass
+        #    else:
+        #        raise ValueError(f"Unknown string for R: {self.R}. Choices [Tikhonov, LM]")
+        #elif isinstance(self.R, torch.Tensor):
+        #    R = self.R.to(self.device)
+
+        if self.GammaInv is not None:
+            self.GammaInv = self.GammaInv.to(self.device)
+
+        deltaU = self.Uel_background.flatten() - Umeas
+        deltaU = torch.from_numpy(deltaU).float().to(self.device)
+
+        if self.GammaInv is not None:
+            A = self.J.T @ torch.diag(self.GammaInv) @ self.J
+            b = self.J.T @ torch.diag(self.GammaInv) @ deltaU
+        else:
+            A = self.J.T @ self.J
+            b = self.J.T @ deltaU
+
+        #if self.R is not None:
+        #    if isinstance(self.R, str):
+        #        if self.R == "LM":
+        #            A = (
+        #                A
+        #                + lamb * torch.diag(torch.diag(A))
+        #                + lamb
+        #                / 2.0
+        #                * torch.eye(self.J.shape[1], device=self.device)
+        #            )
+        #    else:
+        #        A = A + lamb * R
+        A = A + lamb * self.R.to(self.device)
+
+        delta_sigma = torch.linalg.solve(A, b).cpu().numpy()
+        sigma = self.backCond + delta_sigma
+
+        sigma = np.clip(sigma, self.clip[0], self.clip[1])
+
+        sigma_reco = Function(self.eit_solver.V_sigma)
+        sigma_reco.x.array[:] = sigma.flatten()
+        return sigma_reco
+
+
 class GaussNewtonSolverTV(Reconstructor):
     def __init__(
         self,

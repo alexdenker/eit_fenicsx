@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.interpolate import interpn, NearestNDInterpolator
+from skimage.filters import threshold_multiotsu
 
 from dolfinx.fem import assemble_scalar, form
 import ufl
@@ -14,6 +15,96 @@ def compute_relative_l1_error(sigma_rec, sigma_gt):
 
     return diff / norm
 
+
+
+
+def multi_level_otsu_segmentation(image):
+    # Apply thresholding
+    thresholds = threshold_multiotsu(image, classes=3)
+    #print(thresholds)
+    # Segment image into three classes based on the thresholds
+    class0 = image < thresholds[0]  # Lower conductivity
+    class1 = (image >= thresholds[0]) & (image < thresholds[1])  # Background
+    class2 = image >= thresholds[1]  # Higher conductivity
+    
+    # However, sometimes this does not work and class1 is actually the background class
+    # We work with the heuristic that the class with the most number of elements is the background
+    inds = [np.count_nonzero(class0),np.count_nonzero(class1),np.count_nonzero(class2)]
+    bgclass = inds.index(max(inds)) #background class
+
+    segmented_image = np.zeros_like(image)
+    if bgclass == 0: # background is class0, join class1 + class2 for higher
+        segmented_image[class0] = 0  
+        segmented_image[class1] = 1
+        segmented_image[class2] = 1  
+    elif bgclass == 1: # background is class1, then class0 is lower, class2 is higher
+        segmented_image[class0] = -1  
+        segmented_image[class1] = 0
+        segmented_image[class2] = 1  
+    elif bgclass == 2: # background is 2, join class0 + class1 for lower
+        segmented_image[class0] = -1  
+        segmented_image[class1] = -1
+        segmented_image[class2] = 0
+    else:
+        print("Segmentation failed, return zero image")
+
+    return segmented_image, thresholds
+
+def compute_dice_per_class(pred, gt):
+    dice_scores = []
+
+    class_sizes = []
+    for class_id in [-1, 0, 1]:
+        # Create binary masks for each class
+        pred_class = (pred == class_id).astype(np.uint8)
+        gt_class = (gt == class_id).astype(np.uint8)
+        class_sizes.append(np.count_nonzero(gt_class))
+        # Compute intersection and sum of predictions/ground truth
+        intersection = np.sum(pred_class * gt_class)
+        dice_score = 2 * intersection / (np.sum(pred_class) + np.sum(gt_class))
+
+        # If this sum is zero, we do not have this class in this image
+        if np.sum(pred_class) + np.sum(gt_class) > 0.0:
+            dice_scores.append(dice_score)
+    
+
+    return np.mean(dice_scores) 
+
+def mean_dice_score(pred, gt, backCond):
+    """
+    Compute the mean dice score over classes. 
+    class = -1 : lower conductivity 
+    class = 0  : background 
+    class = 1  : higher conductivity 
+    
+    This method takes in the predicted conductivity values, performs a 
+    segmentation using Otsus method and computes the mean dice score.
+
+    We segment the ground truth using the knowledge of the background conductivity. 
+
+    Note: This method is not batched 
+    TODO: Deal with batches.
+
+    pred: predicted conductivity values, np.array 
+    gt: groundtruth conductivity values, np.array
+    """
+
+    pred_seg, _ = multi_level_otsu_segmentation(pred.flatten())
+
+    # segment ground truth 
+    class0 = gt.flatten() < (backCond - 0.2)   # Lower conductivity
+    class1 = (gt.flatten() >= (backCond - 0.2)) & (gt.flatten() < (backCond + 0.2))  # Background
+    class2 = gt.flatten() >= (backCond + 0.2)  # Higher conductivity
+
+            
+    segmented_gt = np.zeros_like(gt.flatten())
+    segmented_gt[class0] = -1
+    segmented_gt[class1] = 0 
+    segmented_gt[class2] = 1
+
+    dice_score = compute_dice_per_class(pred_seg, segmented_gt)
+
+    return dice_score
 
 def image_to_mesh(x, mesh_pos):
     radius = np.max(np.abs(mesh_pos))
