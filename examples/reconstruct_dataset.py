@@ -4,6 +4,9 @@ import time
 import sys
 
 import yaml
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.tri import Triangulation
 
@@ -15,9 +18,15 @@ from dolfinx.fem import Function
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from src.eit_forward_fenicsx import EIT
 from src.sparsity_reconstruction import L1Sparsity
-from src.utils import compute_relative_l1_error, mean_dice_score
 from src.gauss_newton import GaussNewtonSolverTV, LinearisedReconstruction
 from src.data_driven_reconstructors import FCUnet
+from src.random_ellipses import gen_conductivity
+from src.performance_metrics import (
+    RelativeL1Error,
+    DiceScore,
+    DynamicRange,
+    MeasurementError,
+)
 
 from ellipses_dataset import EllipsesDataset
 from kit4_dataset import KIT4Dataset
@@ -30,6 +39,7 @@ parser = argparse.ArgumentParser(description="conditional sampling")
 parser.add_argument("--method", default="l1_sparsity")
 parser.add_argument("--dataset", default="ellipses")  # ellipses or kit4
 parser.add_argument("--part", default="val")
+
 # used for l1 sparsity
 parser.add_argument("--alpha", default=0.0001)
 parser.add_argument("--kappa", default=0.0285)
@@ -38,6 +48,7 @@ parser.add_argument("--kappa", default=0.0285)
 # used for gauss-newton with TV
 parser.add_argument("--lamb", default=0.04)
 parser.add_argument("--beta", default=1e-6)
+parser.add_argument("--num_steps", default=8)
 
 
 def main(args):
@@ -60,6 +71,7 @@ def main(args):
 
         config.lamb = float(args.lamb)
         config.beta = float(args.beta)
+        config.num_steps = int(args.num_steps)
     elif method == "fcunet":
         from config.fcunet import get_config
 
@@ -100,7 +112,10 @@ def main(args):
         dataset = EllipsesDataset(part="test", inj_mode=inj_mode)
         z = 1e-6 * np.ones(L)
 
-        max_idx = len(dataset)  # min(10, len(dataset))
+        if part == "val":
+            max_idx = min(10, len(dataset))
+        else:
+            max_idx = len(dataset)  # min(10, len(dataset))
     elif str(args.dataset) == "kit4":
         dataset = KIT4Dataset(inj_mode=inj_mode)
         z = np.array(
@@ -202,17 +217,29 @@ def main(args):
     rel_error_l1_list = []
     dice_score_list = []
     inf_time_list = []
+    dr_list = []
+    measurement_error_list = []
+
+    rel_l1_error = RelativeL1Error(name="RelL1")
+    dynamic_range = DynamicRange(name="DR")
+    dice_score = DiceScore(name="Dice", backCond=config.backCond)
+    measurement_error = MeasurementError(name="VoltageError", solver=solver)
+
     for idx in range(max_idx):
         if isinstance(dataset, EllipsesDataset):
             s, U = dataset[idx]
             sigma_gt_vsigma = Function(solver.V_sigma)
             sigma_gt_vsigma.x.array[:] = s.cpu().numpy()
+
+            _, U = solver.forward_solve(sigma_gt_vsigma)
+
         elif isinstance(dataset, KIT4Dataset):
             s, U = dataset[idx]
         else:
             raise NotImplementedError
 
-        Umeas = U.numpy()
+        # Umeas = U.numpy()
+        Umeas = np.array(U)
         if part == "val" and isinstance(dataset, EllipsesDataset):
             # add noise to validation data
             Umeas = Umeas + delta * np.mean(np.abs(Umeas)) * np.random.normal(
@@ -220,7 +247,7 @@ def main(args):
             )
 
         if method == "gn_tv" or method == "linearised_reco":
-            noise_percentage = 0.01
+            noise_percentage = delta  # 0.01
             var_meas = (noise_percentage * np.abs(Umeas)) ** 2
             GammaInv = 1.0 / (var_meas.flatten() + 0.001)
             GammaInv = torch.from_numpy(GammaInv).float().to(reconstructor.device)
@@ -234,18 +261,20 @@ def main(args):
         sigma_reco = reconstructor.forward(
             Umeas=Umeas, verbose=True, sigma_init=sigma_init
         )
+        if isinstance(reconstructor, L1Sparsity):
+            sigma_reco_l1_vsigma = Function(solver.V_sigma)
+            sigma_reco_l1_vsigma.interpolate(sigma_reco)
+            sigma_reco = sigma_reco_l1_vsigma
+
         t_end = time.time()
         inf_time_list.append(t_end - t_start)
         if isinstance(dataset, EllipsesDataset):
-            dice_score = mean_dice_score(
-                np.array(sigma_reco.x.array[:]).flatten(),
-                np.array(sigma_gt_vsigma.x.array[:]).flatten(),
-                backCond=config.backCond,
-            )
-            dice_score_list.append(dice_score)
+            # Calculate Quality Metrics
+            dr_list.append(dynamic_range(sigma_reco, sigma_gt_vsigma))
+            dice_score_list.append(dice_score(sigma_reco, sigma_gt_vsigma))
+            measurement_error_list.append(measurement_error(sigma_reco, Umeas))
+            rel_error_l1_list.append(rel_l1_error(sigma_reco, sigma_gt_vsigma))
 
-            rel_error_l1 = compute_relative_l1_error(sigma_reco, sigma_gt_vsigma)
-            rel_error_l1_list.append(rel_error_l1)
             sigma_img = reconstructor.interpolate_to_image(
                 np.array(sigma_reco.x.array[:]).flatten(), fill_value=backCond
             )
@@ -284,7 +313,7 @@ def main(args):
             axes[0, 1].axis("image")
             axes[0, 1].set_aspect("equal", adjustable="box")
             axes[0, 1].set_title(
-                f"Reconstruction, \n relative L1 error={np.format_float_positional(rel_error_l1,4)}"
+                f"Reconstruction, \n rel. L1 error={np.format_float_positional(rel_error_l1_list[-1],4)}"
             )
             fig.colorbar(im, ax=axes[0, 1], fraction=0.046, pad=0.04)
             axes[0, 1].axis("off")
@@ -296,7 +325,7 @@ def main(args):
 
             im = axes[1, 1].imshow(sigma_img, cmap="jet", vmin=0.01, vmax=3.0)
             axes[1, 1].set_title(
-                f"Reconstruction, \n relative L1 error={np.format_float_positional(rel_error_l1,4)}"
+                f"Reconstruction, \n rel. L1 error={np.format_float_positional(rel_error_l1_list[-1],4)}"
             )
             fig.colorbar(im, ax=axes[1, 1], fraction=0.046, pad=0.04)
             axes[1, 1].axis("off")
@@ -340,6 +369,8 @@ def main(args):
     results_dict["rel_l1_error"] = float(np.mean(rel_error_l1_list))
     results_dict["inf_time"] = float(np.mean(inf_time_list))
     results_dict["dice_score"] = float(np.mean(dice_score_list))
+    results_dict["dynamic_range"] = float(np.mean(dr_list))
+    results_dict["measurement_error"] = float(np.mean(measurement_error_list))
 
     with open(os.path.join(save_dir, "results.yaml"), "w") as file:
         yaml.dump(results_dict, file)
