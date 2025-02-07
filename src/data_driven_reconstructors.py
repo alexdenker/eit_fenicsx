@@ -18,6 +18,8 @@ class FCUnet(Reconstructor):
         print("config: ", config)
         if config["inj_mode"] == "all":
             in_dim = 1264
+        elif config["inj_mode"] == "all_against_1":
+            in_dim = 240
         else:
             raise NotImplementedError
 

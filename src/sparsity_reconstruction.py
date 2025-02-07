@@ -4,6 +4,22 @@ min_{delta_s} 1/2 || F(s_background + delta_s) - U ||_2^2 + alpha || delta_s||_1
 Sparsity Reconstruction, see
     M. Gehre et al. (2012) "Sparsity reconstruction in electrical impedance tomography: An experimental evaluation",
     Journal of Computational and Applied Mathematics https://www.sciencedirect.com/science/article/pii/S0377042711005140
+
+The class L1Sparsity follows algorithm 2 in the paper:
+
+Let sigma0 be the (known) background conductivity [Line 126]
+Set  delta sigma^0 = 0 [Line 135]
+for j = 1, ..., J do
+    Compute sigma^j = sigma0 + delta sigma^j  [Line 162]
+    Compute the gradient D'(sigma^j) by the adjoint method [Line 179]
+    Compute the smoothed gradient Ds'(sigma^j) [Line 179]
+    Determine step size tau_j [Line 183]
+    Update inhomogeneity by delta sigma^j+1 = delta sigma^j - tau_j Ds'(sigma^j) [Line 207]
+    Threshold delta sigma^J+1 by S_{tau_j alpha}(delta sigma^j+1) [Line 212]
+    Check stopping criterion [Line 231]
+end for
+Output sigma0 + delta sigma
+
 """
 
 import os
