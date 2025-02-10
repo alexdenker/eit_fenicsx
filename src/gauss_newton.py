@@ -141,6 +141,9 @@ class GaussNewtonSolver(Reconstructor):
         sigma_reco.x.array[:] = sigma.flatten()
         return sigma_reco
 
+    
+
+
 
 class LinearisedReconstruction(Reconstructor):
     def __init__(
@@ -397,3 +400,41 @@ class GaussNewtonSolverTV(Reconstructor):
         sigma_reco = Function(self.eit_solver.V_sigma)
         sigma_reco.x.array[:] = sigma.flatten()
         return sigma_reco
+
+
+    def single_step(self, sigma, Umeas):
+
+        sigma_k = Function(self.eit_solver.V_sigma)
+        sigma_k.x.array[:] = sigma
+
+        u_all, Usim = self.eit_solver.forward_solve(sigma_k)
+        Usim = np.asarray(Usim).flatten()
+
+        J = self.eit_solver.calc_jacobian(sigma_k, u_all)
+
+        deltaU = Usim - Umeas
+
+        J = torch.from_numpy(J).float().to(self.device)
+        deltaU = torch.from_numpy(deltaU).float().to(self.device)
+
+        if self.GammaInv is not None:
+            A = J.T @ torch.diag(self.GammaInv) @ J
+            b = J.T @ torch.diag(self.GammaInv) @ deltaU
+        else:
+            A = J.T @ J
+            b = J.T @ deltaU
+        
+        L_sigma = np.abs(self.Ltv @ np.array(sigma_k.x.array[:])) ** 2
+        eta = np.sqrt(L_sigma + self.beta)
+        E = np.diag(1 / eta)
+
+        A = A + torch.from_numpy(
+            self.lamb * self.Ltv.T @ E @ self.Ltv
+        ).float().to(self.device)
+        b = b - torch.from_numpy(
+            self.lamb * self.Ltv.T @ E @ self.Ltv @ sigma_k.x.array[:]
+        ).float().to(self.device)
+
+        delta_sigma = torch.linalg.solve(A, b)
+
+        return delta_sigma

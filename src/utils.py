@@ -5,7 +5,7 @@ from scipy.interpolate import interpn, NearestNDInterpolator
 def image_to_mesh(x, mesh_pos):
     radius = np.max(np.abs(mesh_pos))
 
-    pixcenter_x = pixcenter_y = np.linspace(-radius, radius, 256)
+    pixcenter_x = pixcenter_y = np.linspace(-radius, radius, x.shape[-1])
     X, Y = np.meshgrid(pixcenter_x, pixcenter_y, indexing="ij")
 
     sigma = interpn(

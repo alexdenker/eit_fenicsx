@@ -26,6 +26,7 @@ from src.performance_metrics import (
     DiceScore,
     DynamicRange,
     MeasurementError,
+    RelativeL2Error
 )
 
 from ellipses_dataset import EllipsesDataset
@@ -215,12 +216,14 @@ def main(args):
     results_dict = {}
 
     rel_error_l1_list = []
+    rel_error_l2_list = []
     dice_score_list = []
     inf_time_list = []
     dr_list = []
     measurement_error_list = []
 
     rel_l1_error = RelativeL1Error(name="RelL1")
+    rel_l2_error = RelativeL2Error(name="RelL2")
     dynamic_range = DynamicRange(name="DR")
     dice_score = DiceScore(name="Dice", backCond=config.backCond)
     measurement_error = MeasurementError(name="VoltageError", solver=solver)
@@ -261,6 +264,9 @@ def main(args):
         sigma_reco = reconstructor.forward(
             Umeas=Umeas, verbose=True, sigma_init=sigma_init
         )
+        sigma_reco = Function(solver.V_sigma)
+        sigma_reco.x.array[:] = backCond
+
         if isinstance(reconstructor, L1Sparsity):
             sigma_reco_l1_vsigma = Function(solver.V_sigma)
             sigma_reco_l1_vsigma.interpolate(sigma_reco)
@@ -274,6 +280,7 @@ def main(args):
             dice_score_list.append(dice_score(sigma_reco, sigma_gt_vsigma))
             measurement_error_list.append(measurement_error(sigma_reco, Umeas))
             rel_error_l1_list.append(rel_l1_error(sigma_reco, sigma_gt_vsigma))
+            rel_error_l2_list.append(rel_l2_error(sigma_reco, sigma_gt_vsigma))
 
             sigma_img = reconstructor.interpolate_to_image(
                 np.array(sigma_reco.x.array[:]).flatten(), fill_value=backCond
@@ -367,6 +374,7 @@ def main(args):
             plt.close()
 
     results_dict["rel_l1_error"] = float(np.mean(rel_error_l1_list))
+    results_dict["rel_l2_error"] = float(np.mean(rel_error_l2_list))
     results_dict["inf_time"] = float(np.mean(inf_time_list))
     results_dict["dice_score"] = float(np.mean(dice_score_list))
     results_dict["dynamic_range"] = float(np.mean(dr_list))

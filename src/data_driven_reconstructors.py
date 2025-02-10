@@ -57,3 +57,5 @@ class FCUnet(Reconstructor):
         sigma_reco = Function(self.eit_solver.V_sigma)
         sigma_reco.x.array[:] = sigma.flatten()
         return sigma_reco
+
+

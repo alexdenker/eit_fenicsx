@@ -39,6 +39,26 @@ class RelativeL1Error(PerformanceMetric):
         return diff / norm
 
 
+class RelativeL2Error(PerformanceMetric):
+    def __init__(self, name):
+        super().__init__(name)
+
+    def __call__(self, sigma_pred, sigma_gt):
+        """
+        sigma_pred: prediction, FenicsX function
+        sigma_gt: ground truth, FenicsX function
+
+        """
+
+        diff = abs(sigma_pred - sigma_gt)**2 * ufl.dx
+        diff = assemble_scalar(form(diff))
+
+        norm = abs(sigma_gt)**2 * ufl.dx
+        norm = assemble_scalar(form(norm))
+
+        return diff / norm
+
+
 class DiceScore(PerformanceMetric):
     def __init__(self, name, backCond: float):
         super().__init__(name)
