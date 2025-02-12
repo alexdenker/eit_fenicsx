@@ -49,7 +49,7 @@ class EIT:
 
         ## Length of one single electrode, assuming all have the same length
         self.electrode_len = assemble_scalar(form(1 * self.ds_electrodes(1)))
-
+        print("Electrode length: ", self.electrode_len)
         ### Create function space and helper functions
         self.V = functionspace(self.omega, ("Lagrange", 1))
         self.V_sigma = functionspace(self.omega, ("DG", 0))

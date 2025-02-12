@@ -322,7 +322,9 @@ class GaussNewtonSolverTV(Reconstructor):
 
         if self.GammaInv is not None:
             GammaInv = self.GammaInv.to(self.device)
-
+        else:
+            GammaInv = torch.ones(Umeas.shape)
+            
         sigma = sigma_init.x.array[:]
 
         sigma_old = Function(self.eit_solver.V_sigma)
@@ -381,7 +383,14 @@ class GaussNewtonSolverTV(Reconstructor):
 
                     _, Utest = self.eit_solver.forward_solve(sigmanew)
                     Utest = np.asarray(Utest).flatten()
-                    losses.append(np.sum((Utest - Umeas) ** 2))
+
+                    tv_value = self.lamb * np.sqrt(((self.Ltv @ sigma_new) ** 2) + self.beta).sum()
+                    #print(GammaInv.shape, Umeas.shape)
+
+                    meas_value = 0.5 * np.sum((torch.diag(GammaInv).cpu().numpy() @ (Utest - Umeas)) ** 2)
+                    #print(meas_value, tv_value)
+                    #losses.append(np.sum((Utest - Umeas) ** 2))
+                    losses.append(meas_value + tv_value)
 
                 step_size = step_sizes[np.argmin(losses)]
 

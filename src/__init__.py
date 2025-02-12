@@ -16,4 +16,4 @@ from .performance_metrics import (
     MeasurementError,
     RelativeL2Error
 )
-from .learned_iterative_reconstruction import IterativeNet
+from .learned_iterative_reconstruction import IterativeNet, NaiveIterativeNet, GraphNaiveIterativeNet

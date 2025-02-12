@@ -264,8 +264,7 @@ def main(args):
         sigma_reco = reconstructor.forward(
             Umeas=Umeas, verbose=True, sigma_init=sigma_init
         )
-        sigma_reco = Function(solver.V_sigma)
-        sigma_reco.x.array[:] = backCond
+
 
         if isinstance(reconstructor, L1Sparsity):
             sigma_reco_l1_vsigma = Function(solver.V_sigma)

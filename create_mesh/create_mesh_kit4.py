@@ -83,17 +83,19 @@ electrodes_obj = electrodes_position(
     L=L, per_cover=0.45, rotate=rotate, anticlockwise=False
 )
 
+print(electrodes_obj.position)
+
 
 electrodes = np.copy(electrodes_obj.position)
 rotate = electrodes_obj.rotate
 anticlockwise = electrodes_obj.anticlockwise
-
 
 gmsh.initialize()
 gmsh.model.add("Disk")
 
 point_num = L * (n_in + n_out)
 tag_list = np.zeros(point_num, dtype=np.int16)
+elec_pos_list = []
 
 no_elek_tags_idx = []
 
@@ -107,12 +109,21 @@ for i in range(L):
         # Add 2*pi to the end angle to ensure continuity
         theta0 += 2 * np.pi
     # print("Electrode at: ", theta0, thetai)
-    for theta in np.linspace(theta0, thetai, n_in):
+    for idx, theta in enumerate(np.linspace(theta0, thetai, n_in)):
+        print(idx, n_in)
+        print(f"Counter {counter} is electrode point!")
+
         theta = (theta + np.pi) % (2 * np.pi) - np.pi
+        elec_pos_list.append((radius * np.cos(theta), radius * np.sin(theta)))
         tag_list[counter] = gmsh.model.occ.addPoint(
             radius * np.cos(theta), radius * np.sin(theta), 0.0
         )
-        electrode_idx[i].append(counter)
+        # I am not quite sure, but gmshio needs the last part to be already non electrode to produce the correct final regions 
+        if idx < (n_in - 1):
+            electrode_idx[i].append(counter)
+        else:
+            print(f"ADD COUNTER {counter} TO NO ELECTRODE")
+            no_elek_tags_idx.append(counter)
         counter += 1
 
     # Selecting the last gap with the first electrode.
@@ -128,14 +139,29 @@ for i in range(L):
     # Creating vertex on the gaps.
     for theta in np.linspace(theta0, thetai, n_out + 2):
         if theta != theta0 and theta != thetai:
+            print(f"Counter {counter} is NO electrode point!")
             tag_list[counter] = gmsh.model.occ.addPoint(
                 radius * np.cos(theta), radius * np.sin(theta), 0.0
             )
-
+            elec_pos_list.append((radius * np.cos(theta), radius * np.sin(theta)))
             no_elek_tags_idx.append(counter)
             counter += 1
 
+print("no elek: ", )
+
 # print("counter and point_num: ", counter, point_num)
+
+print(f"MESH POINTS OF FIRST ELECTRODE FOR {mesh_type} MESH")
+print(len(electrode_idx[0]))
+total_length = 0
+for idx in range(len(electrode_idx[0]) - 1):
+    print("Intermediate length: ", np.sqrt((elec_pos_list[idx][0] - elec_pos_list[idx+1][0])**2 + (elec_pos_list[idx][1] - elec_pos_list[idx+1][1])**2) )
+    total_length += np.sqrt((elec_pos_list[idx][0] - elec_pos_list[idx+1][0])**2 + (elec_pos_list[idx][1] - elec_pos_list[idx+1][1])**2) 
+    print(elec_pos_list[idx])
+
+print("TOTAL LENGTH: ", total_length)
+
+#breakpoint()
 
 mesh_size_center = 0.095
 cp_distance = 0.1  # 0.1 #0.0065
@@ -164,16 +190,22 @@ gmsh.model.occ.synchronize()
 ### Mark subdomains
 gmsh.model.addPhysicalGroup(2, [surf], 1, name="domain")
 
+print("tag list: ", tag_list)
 for i in range(L):
+    print(f"Electrode_idx for {i}: {electrode_idx[i]}")
+    print(f"Selected Tag List {i}: {tag_list[electrode_idx[i]]}")
+
     gmsh.model.addPhysicalGroup(
         1, tag_list[electrode_idx[i]], i + 1, name="Elektrode" + str(i + 1)
     )
 
 gmsh.model.addPhysicalGroup(1, tag_list[no_elek_tags_idx], 0, name="No-Elektrode")
 
+
 gmsh.model.mesh.generate(2)
 
-gmsh.write(f"KIT4_mesh_{mesh_type}.msh")
+
+gmsh.write(f"data/KIT4_mesh_{mesh_type}.msh")
 
 if show_mesh and "-nopopup" not in sys.argv:
     gmsh.fltk.run()
