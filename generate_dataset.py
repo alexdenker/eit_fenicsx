@@ -21,12 +21,16 @@ from src.utils import image_to_mesh, interpolate_mesh_to_mesh
 from src.random_ellipses import gen_conductivity
 
 
-part = "test"
-dataset_size = {"train": 2000, "val": 200, "test": 100}
-start_seed = {"train": 0, "val": 5000, "test": 6000}
+part = "train_extra"
+dataset_size = {"train_extra": 8000, "train": 2000, "val": 200, "test": 100}
+start_seed = {"train": 0, "val": 5000, "test": 6000, "train_extra": 10000}
 
-if not os.path.exists(f"dataset/{part}"):
-    os.makedirs(f"dataset/{part}")
+if part == "train_extra":
+    save_part_name = "train"
+else:
+    save_part_name = part 
+if not os.path.exists(f"dataset/{save_part_name}"):
+    os.makedirs(f"dataset/{save_part_name}")
 
 device = "cuda"
 
@@ -89,15 +93,20 @@ for i in tqdm(range(dataset_size[part])):
     np.save("dataset/mesh_points.npy", np.array(xy))
     np.save("dataset/cells.npy", np.array(cells))
 
-    np.save(f"dataset/{part}/sigma_{i}.npy", sigma_gt_coarse.x.array[:].flatten())
-    np.save(f"dataset/{part}/Umeas_{i}.npy", Umeas)
+    if part == "train_extra":
+        save_idx = dataset_size["train"] + i 
+    else:
+        save_idx = i 
+    np.save(f"dataset/{save_part_name}/sigma_{save_idx}.npy", sigma_gt_coarse.x.array[:].flatten())
+    np.save(f"dataset/{save_part_name}/Umeas_{save_idx}.npy", Umeas)
+
 
     if part == "test":
         delta = 0.005
         U_noisy = Umeas + delta * np.mean(np.abs(Umeas)) * np.random.normal(
             size=Umeas.shape
         )
-        np.save(f"dataset/{part}/Umeas_noisy_{i}.npy", Umeas)
+        np.save(f"dataset/{save_part_name}/Umeas_noisy_{save_idx}.npy", U_noisy)
 
         # print(U_noisy.shape)
         # plt.figure()
