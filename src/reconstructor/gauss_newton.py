@@ -55,8 +55,8 @@ class GaussNewtonSolver(Reconstructor):
                 pass
             else:
                 raise ValueError(f"Unknown string for R: {R}. Choices [Tikhonov, LM]")
-        elif isinstance(R, torch.Tensor):
-            R = R.to(self.device)
+        elif isinstance(self.R, torch.Tensor):
+            R = self.R.to(self.device)
 
         if self.GammaInv is not None:
             self.GammaInv = self.GammaInv.to(self.device)
