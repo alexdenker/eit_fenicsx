@@ -16,10 +16,8 @@ from dolfinx.fem import Function, create_nonmatching_meshes_interpolation_data
 import matplotlib.pyplot as plt
 from matplotlib.tri import Triangulation
 
-from src.eit_forward_fenicsx import EIT
-from src.utils import image_to_mesh, interpolate_mesh_to_mesh
-from src.random_ellipses import gen_conductivity
 
+from src import EIT, gen_conductivity, image_to_mesh, interpolate_mesh_to_mesh
 
 part = "train_extra"
 dataset_size = {"train_extra": 8000, "train": 2000, "val": 200, "test": 100}

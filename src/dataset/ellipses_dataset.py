@@ -16,7 +16,8 @@ class EllipsesDataset(Dataset):
             "train",
             "val",
             "test",
-        ], "Part has to be either train, val or test"
+            "ood"
+        ], "Part has to be either train, val, test or ood"
         assert inj_mode in [
             "all_against_1",
             "all",
@@ -43,7 +44,7 @@ class EllipsesDataset(Dataset):
         ]
         self.sigma_files.sort(key=lambda x: int(x.split(".")[0].split("_")[-1]))
 
-        if self.part == "test":
+        if self.part == "test" or self.part == "ood":
             # load noisy data
             self.Umeas_files = [
                 f
@@ -56,7 +57,7 @@ class EllipsesDataset(Dataset):
             self.Umeas_files = [
                 f
                 for f in os.listdir(os.path.join(self.base_path, self.part))
-                if f.startswith("Umeas")
+                if not f.startswith("Umeas_noisy") and f.startswith("Umeas")
             ]
             self.Umeas_files.sort(key=lambda x: int(x.split(".")[0].split("_")[-1]))
 

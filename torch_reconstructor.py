@@ -12,11 +12,7 @@ from scipy.sparse import csr_array
 from dolfinx.fem import Function
 
 
-from src.eit_forward_fenicsx import EIT
-from src.torch_wrapper import CEMModule
-from src.random_ellipses import gen_conductivity
-from src.utils import current_method
-
+from src import EIT, gen_conductivity, CEMModule, current_method
 
 def construct_tv_matrix(omega):
     omega.topology.create_connectivity(1, 2)  # Facet-to-cell connectivity
@@ -67,7 +63,7 @@ def construct_tv_matrix(omega):
     v = torch.FloatTensor(values)
     shape = Lcoo.shape
 
-    print("SHAPE:", shape)
+    #print("SHAPE:", shape)
     Ltorch_tv = torch.sparse_coo_tensor(i, v, torch.Size(shape))
     # L = torch.sparse.FloatTensor(i, v, torch.Size(shape))
     return Ltorch_tv
@@ -75,13 +71,13 @@ def construct_tv_matrix(omega):
 
 device = "cuda"
 
-optim = "adam"  # "lbfgs"
+optim = "adam" #"adam"  # "lbfgs"
 
 L = 16
 backCond = 1.0
 
-# Injref = np.concatenate([current_method(L=L, l=L//2, method=1,value=1.5), current_method(L=L, l=L, method=2,value=1.5)])
-Injref = current_method(L=L, l=L - 1, method=5, value=1.5)
+Injref = np.concatenate([current_method(L=L, l=L//2, method=1,value=1.5), current_method(L=L, l=L, method=2,value=1.5)])
+#Injref = current_method(L=L, l=L - 1, method=5, value=1.5)
 
 z = 1e-6 * np.ones(L)
 solver = EIT(L, Injref, z, backend="Scipy", mesh_name="data/KIT4_mesh_coarse.msh")
@@ -92,7 +88,7 @@ tri = Triangulation(xy[:, 0], xy[:, 1], cells)
 
 mesh_pos = np.array(solver.V_sigma.tabulate_dof_coordinates()[:, :2])
 
-np.random.seed(11)  # 14: works well
+np.random.seed(16)  # 14: works well
 sigma_mesh = gen_conductivity(
     mesh_pos[:, 0], mesh_pos[:, 1], max_numInc=3, backCond=backCond
 )
@@ -121,7 +117,7 @@ var_meas = (noise_percentage * np.abs(Umeas)) ** 2
 # Umeas = Umeas + np.sqrt(var_meas) * np.random.normal(size=Umeas.shape)
 
 eit_module = CEMModule(
-    eit_solver=solver, kappa=0.005, gradient_smooting=True
+    eit_solver=solver, mode="jacobian", kappa=0.005, gradient_smooting=True
 )  # kappa=0.028
 
 sigma_torch = torch.nn.Parameter(torch.zeros_like(sigma_background_torch))
@@ -130,7 +126,7 @@ print(sigma_torch.shape, Ltorch_tv.shape)
 Ltorch_tv = Ltorch_tv.to(sigma_torch.device)
 
 if optim == "adam":
-    optimizer = torch.optim.Adam([sigma_torch], lr=0.1)
+    optimizer = torch.optim.Adam([sigma_torch], lr=0.05)
 
 elif optim == "lbfgs":
     optimizer = torch.optim.LBFGS([sigma_torch], lr=0.2, max_iter=12)
@@ -140,10 +136,12 @@ Umeas_torch = torch.from_numpy(Umeas).unsqueeze(0).float().to(device)
 
 print("Number of parameters: ", sigma_torch.shape.numel())
 
+num_iterations = 50 
+tol = 1e-4
 
-alpha_l1 = 0.001  # 0.01 #0.04 #0.008 #0.015
-alpha_tv = 1.5
-for i in tqdm(range(80)):
+alpha_l1 = 0.0 #0.002  # 0.01 #0.04 #0.008 #0.015
+alpha_tv = 12.0
+for i in tqdm(range(num_iterations)):
     sigma_old = Function(solver.V_sigma)
     sigma_old.x.array[:] = (
         (sigma_background_torch + sigma_torch).detach().cpu().numpy()[0, :]
@@ -187,40 +185,58 @@ for i in tqdm(range(80)):
         (sigma_background_torch + sigma_torch).detach().cpu().numpy()[0, :]
     )
 
-    print(
-        "Relative Change: ",
-        np.linalg.norm(sigma_j.x.array[:] - sigma_old.x.array[:])
-        / np.linalg.norm(sigma_j.x.array[:]),
+    sigma_grad = Function(solver.V_sigma)
+    sigma_grad.x.array[:] = (
+        sigma_torch.grad.detach().cpu().numpy()[0, :]
     )
 
-fig, (ax2, ax1) = plt.subplots(1, 2, figsize=(16, 6))
 
-im = ax1.tripcolor(
-    tri,
-    np.array(sigma_j.x.array[:]).flatten(),
-    cmap="jet",
-    shading="flat",
-    vmin=0.01,
-    vmax=2,
-)
-ax1.set_title("Reconstruction")
-ax1.axis("image")
-ax1.set_aspect("equal", adjustable="box")
-fig.colorbar(im, ax=ax1)
-ax1.axis("off")
+    rel_change = np.linalg.norm(sigma_j.x.array[:] - sigma_old.x.array[:])/ np.linalg.norm(sigma_j.x.array[:])
+    print("Relative Change: ", rel_change)
 
-im = ax2.tripcolor(
-    tri,
-    np.array(sigma_gt_vsigma.x.array[:]).flatten(),
-    cmap="jet",
-    shading="flat",
-    vmin=0.01,
-    vmax=2,
-)
-ax2.set_title("Ground truth")
-ax2.axis("image")
-ax2.set_aspect("equal", adjustable="box")
-fig.colorbar(im, ax=ax2)
-ax2.axis("off")
-# plt.savefig("imgs/torch_reconstruction.png", bbox_inches="tight")
-plt.show()
+    if rel_change < tol:
+        break
+
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(16, 6))
+
+    im = ax1.tripcolor(
+        tri,
+        np.array(sigma_j.x.array[:]).flatten(),
+        cmap="jet",
+        shading="flat",
+        vmin=0.01,
+        vmax=2,
+    )
+    ax1.set_title("Reconstruction")
+    ax1.axis("image")
+    ax1.set_aspect("equal", adjustable="box")
+    fig.colorbar(im, ax=ax1)
+    ax1.axis("off")
+
+    im = ax2.tripcolor(
+        tri,
+        np.array(sigma_gt_vsigma.x.array[:]).flatten(),
+        cmap="jet",
+        shading="flat",
+        vmin=0.01,
+        vmax=2,
+    )
+    ax2.set_title("Ground truth")
+    ax2.axis("image")
+    ax2.set_aspect("equal", adjustable="box")
+    fig.colorbar(im, ax=ax2)
+    ax2.axis("off")
+
+    im = ax3.tripcolor(
+        tri,
+        np.array(sigma_grad.x.array[:]).flatten(),
+        cmap="jet",
+        shading="flat",
+    )
+    ax3.set_title("Gradient")
+    ax3.axis("image")
+    ax3.set_aspect("equal", adjustable="box")
+    fig.colorbar(im, ax=ax3)
+    ax3.axis("off")
+
+    plt.show()

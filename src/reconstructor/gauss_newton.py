@@ -10,9 +10,8 @@ import torch
 from dolfinx.fem import Function
 from scipy.sparse import csr_array
 
-from src.eit_forward_fenicsx import EIT
+from src.forward_model import EIT
 from src.reconstructor import Reconstructor
-
 
 class GaussNewtonSolver(Reconstructor):
     def __init__(
@@ -189,7 +188,7 @@ class LinearisedReconstruction(Reconstructor):
         lamb = kwargs.get("lamb", None)
         if lamb is None:
             lamb = self.lamb
-            print(f"No regularisation was specified, use {lamb}")
+            #print(f"No regularisation was specified, use {lamb}")
 
         # if isinstance(self.R, str):
         #    if self.R == "Tikhonov":
@@ -238,6 +237,7 @@ class LinearisedReconstruction(Reconstructor):
         return sigma_reco
 
 
+
 class GaussNewtonSolverTV(Reconstructor):
     def __init__(
         self,
@@ -256,6 +256,15 @@ class GaussNewtonSolverTV(Reconstructor):
         self.device = device
 
         self.Ltv = self.construct_tv_matrix()
+
+        coo = self.Ltv.tocoo()  # Convert to COO format
+        indices = torch.tensor([coo.row, coo.col], dtype=torch.int64)  # Indices of non-zero elements
+        values = torch.tensor(coo.data, dtype=torch.float32)  # Non-zero values
+
+        # Create PyTorch sparse tensor
+        self.Ltv_torch = torch.sparse_coo_tensor(indices, values, coo.shape, device=self.device)
+
+
 
         self.num_steps = num_steps
         self.lamb = lamb
@@ -323,7 +332,7 @@ class GaussNewtonSolverTV(Reconstructor):
         if self.GammaInv is not None:
             GammaInv = self.GammaInv.to(self.device)
         else:
-            GammaInv = torch.ones(Umeas.shape)
+            GammaInv = torch.ones(Umeas.shape, device=self.device)
             
         sigma = sigma_init.x.array[:]
 
@@ -357,6 +366,7 @@ class GaussNewtonSolverTV(Reconstructor):
                     A = J.T @ J
                     b = J.T @ deltaU
 
+                """
                 L_sigma = np.abs(self.Ltv @ np.array(sigma_k.x.array[:])) ** 2
                 eta = np.sqrt(L_sigma + self.beta)
                 E = np.diag(1 / eta)
@@ -367,7 +377,17 @@ class GaussNewtonSolverTV(Reconstructor):
                 b = b - torch.from_numpy(
                     self.lamb * self.Ltv.T @ E @ self.Ltv @ sigma_k.x.array[:]
                 ).float().to(self.device)
+                """
 
+                sigma_k_torch = torch.tensor(sigma_k.x.array[:], device=self.device, dtype=torch.float32)
+
+                L_sigma = torch.abs(self.Ltv_torch @ sigma_k_torch) ** 2
+                eta = torch.sqrt(L_sigma + self.beta)
+                E = torch.diag(1 / eta)
+
+                A = A + self.lamb * self.Ltv_torch.T @ E @ self.Ltv_torch
+                b = b - self.lamb * self.Ltv_torch.T @ E @ self.Ltv_torch @ sigma_k_torch
+                        
                 delta_sigma = torch.linalg.solve(A, b).cpu().numpy()
 
                 # TODO: Implement a good step size search
@@ -412,19 +432,18 @@ class GaussNewtonSolverTV(Reconstructor):
 
 
     def single_step(self, sigma, Umeas):
-
         sigma_k = Function(self.eit_solver.V_sigma)
         sigma_k.x.array[:] = sigma
 
         u_all, Usim = self.eit_solver.forward_solve(sigma_k)
-        Usim = np.asarray(Usim).flatten()
+        Usim = torch.tensor(np.asarray(Usim).flatten(), device=self.device, dtype=torch.float32)
+        Umeas = torch.tensor(Umeas, device=self.device, dtype=torch.float32)
 
-        J = self.eit_solver.calc_jacobian(sigma_k, u_all)
+        J = torch.tensor(self.eit_solver.calc_jacobian(sigma_k, u_all),
+                         device=self.device,
+                         dtype=torch.float32)
 
         deltaU = Usim - Umeas
-
-        J = torch.from_numpy(J).float().to(self.device)
-        deltaU = torch.from_numpy(deltaU).float().to(self.device)
 
         if self.GammaInv is not None:
             A = J.T @ torch.diag(self.GammaInv) @ J
@@ -432,17 +451,15 @@ class GaussNewtonSolverTV(Reconstructor):
         else:
             A = J.T @ J
             b = J.T @ deltaU
-        
-        L_sigma = np.abs(self.Ltv @ np.array(sigma_k.x.array[:])) ** 2
-        eta = np.sqrt(L_sigma + self.beta)
-        E = np.diag(1 / eta)
 
-        A = A + torch.from_numpy(
-            self.lamb * self.Ltv.T @ E @ self.Ltv
-        ).float().to(self.device)
-        b = b - torch.from_numpy(
-            self.lamb * self.Ltv.T @ E @ self.Ltv @ sigma_k.x.array[:]
-        ).float().to(self.device)
+        sigma_k_torch = torch.tensor(sigma_k.x.array[:], device=self.device, dtype=torch.float32)
+
+        L_sigma = torch.abs(self.Ltv_torch @ sigma_k_torch) ** 2
+        eta = torch.sqrt(L_sigma + self.beta)
+        E = torch.diag(1 / eta)
+
+        A = A + self.lamb * self.Ltv_torch.T @ E @ self.Ltv_torch
+        b = b - self.lamb * self.Ltv_torch.T @ E @ self.Ltv_torch @ sigma_k_torch
 
         delta_sigma = torch.linalg.solve(A, b)
 

@@ -52,7 +52,7 @@ from petsc4py import PETSc
 import ufl
 from tqdm import tqdm
 
-from src.eit_forward_fenicsx import EIT
+from src.forward_model import EIT
 from src.reconstructor import Reconstructor
 
 
