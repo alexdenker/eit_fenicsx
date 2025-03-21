@@ -99,7 +99,8 @@ class IterativeNet(nn.Module):
             
             delta1 = 0.1  # noise level
             delta2 = 0.001 
-            var_meas = (delta1 * np.abs(Umeas[i].cpu().numpy().flatten() - self.gn_reconstructor.Uel_background) + delta2 * np.max(np.abs(Umeas[i].cpu().numpy().flatten() - self.gn_reconstructor.Uel_background))) ** 2
+            #var_meas = (delta1 * np.abs(Umeas[i].cpu().numpy().flatten() - self.gn_reconstructor.Uel_background) + delta2 * np.max(np.abs(Umeas[i].cpu().numpy().flatten() - self.gn_reconstructor.Uel_background))) ** 2
+            var_meas = (delta1 * np.abs(self.gn_reconstructor.Uel_background) + delta2 * np.max(np.abs(self.gn_reconstructor.Uel_background))) ** 2
             GammaInv = 1.0 / (np.maximum(var_meas.flatten(),1e-5))
             GammaInv = torch.from_numpy(GammaInv).float().to(self.gn_reconstructor.device)
 
