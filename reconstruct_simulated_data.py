@@ -7,13 +7,7 @@ import torch
 from dolfinx.fem import Function, assemble_scalar, form
 import ufl
 
-from src.eit_forward_fenicsx import EIT
-from src.random_ellipses import gen_conductivity
-from src.sparsity_reconstruction import L1Sparsity
-from src.utils import current_method
-from src.regulariser import create_smoothness_regulariser
-from src.gauss_newton import GaussNewtonSolver, GaussNewtonSolverTV
-
+from src import EIT, gen_conductivity, L1Sparsity, create_smoothness_regulariser, GaussNewtonSolver, GaussNewtonSolverTV
 
 def compute_relative_l1_error(sigma_rec, sigma_gt):
     diff = abs(sigma_rec - sigma_gt) * ufl.dx
@@ -28,10 +22,9 @@ def compute_relative_l1_error(sigma_rec, sigma_gt):
 device = "cuda"
 
 L = 16
-backCond = 1.0
+backCond = 1.31
 
-# Injref = np.concatenate([current_method(L=L, l=L//2, method=1,value=1.5), current_method(L=L, l=L, method=2,value=1.5)])
-Injref = current_method(L=L, l=L - 1, method=5, value=1.5)
+Injref = np.load("dataset/injection_pattern.npy")
 
 z = 1e-6 * np.ones(L)
 solver = EIT(L, Injref, z, backend="Scipy", mesh_name="data/KIT4_mesh_coarse.msh")
@@ -42,7 +35,7 @@ tri = Triangulation(xy[:, 0], xy[:, 1], cells)
 
 mesh_pos = np.array(solver.V_sigma.tabulate_dof_coordinates()[:, :2])
 
-np.random.seed(16)  # 14: works well
+np.random.seed(14)  # 16 14: works well
 sigma_mesh = gen_conductivity(
     mesh_pos[:, 0], mesh_pos[:, 1], max_numInc=3, backCond=backCond
 )
@@ -56,32 +49,33 @@ sigma_gt.interpolate(sigma_gt_vsigma)
 _, U = solver.forward_solve(sigma_gt)
 Umeas = np.array(U)
 
-noise_percentage = 0.01
+noise_percentage = 0.005
 var_meas = (noise_percentage * np.abs(Umeas)) ** 2
-Umeas = Umeas + np.sqrt(var_meas) * np.random.normal(size=Umeas.shape)
+delta = 0.005
+Umeas = Umeas + delta * np.mean(np.abs(Umeas)) * np.random.normal(
+                size=Umeas.shape
+            )
 
-### Hyperparameters for L1-Reg
-l1 = 0.01  # smallest possible conductivity
-l2 = 4.0  # largest conductivity
 
-alpha = 0.00135  # 0.0001
-kappa = 0.0285
 
 l1_reconstructor = L1Sparsity(
     eit_solver=solver,
     backCond=backCond,
-    kappa=kappa,
-    clip=[l1, l2],
-    max_iter=1,
+    kappa=0.0285,
+    alpha=0.0001,
+    clip=[0.01, 3.0],
+    max_iter=200,
     stopping_criterion=5e-4,
     step_min=1e-6,
-    initial_step_size=0.2,
+    initial_step_size=0.6,
 )
 
-sigma_reco_l1, _ = l1_reconstructor.reconstruct(Umeas=Umeas, alpha=alpha)
+ 
+sigma_reco_l1 = l1_reconstructor.forward(Umeas=Umeas)
 
 sigma_reco_l1_vsigma = Function(solver.V_sigma)
 sigma_reco_l1_vsigma.interpolate(sigma_reco_l1)
+
 
 try:
     Lprior = np.load("data/L_KIT4_mesh_coarse.npy")
@@ -105,42 +99,46 @@ GammaInv = torch.from_numpy(GammaInv).float().to(device)
 sigma_init = Function(solver.V_sigma)
 sigma_init.x.array[:] = backCond
 
-gauss_newton_solver = GaussNewtonSolver(solver, device=device)
+gauss_newton_solver = GaussNewtonSolver(solver, 
+                num_steps=2,
+                R=R,
+                lamb=0.3,  # 8e-4,
+                GammaInv=GammaInv,
+                clip=[0.001, 3.0],
+                backCond=backCond,
+                device=device)
 
-sigma = gauss_newton_solver.reconstruct(
+sigma_rec = gauss_newton_solver.forward(
     Umeas=Umeas_flatten,
     sigma_init=sigma_init,
-    num_steps=1,
-    R=R,
-    lamb=0.2,  # 8e-4,
-    GammaInv=GammaInv,
-    clip=[0.001, 3.0],
-    verbose=True,
-)
-
-
-sigma_rec = Function(solver.V_sigma)
-sigma_rec.x.array[:] = sigma
+    verbose=True
+    )
 
 sigma_init = Function(solver.V_sigma)
 sigma_init.x.array[:] = backCond
 
-gauss_newton_solver = GaussNewtonSolverTV(solver, device=device)
+gauss_newton_solver = GaussNewtonSolverTV(
+    solver,
+    device=device,
+    num_steps=8,
+    lamb=0.04,  
+    beta=1e-6,  
+    GammaInv=GammaInv,
+    clip=[0.01, 3.0],
+    backCond=backCond
+)
 
-sigma = gauss_newton_solver.reconstruct(
+print(gauss_newton_solver.GammaInv)
+
+sigma_rec_tv = gauss_newton_solver.forward(
     Umeas=Umeas_flatten,
     sigma_init=sigma_init,
-    num_steps=10,
-    lamb=0.2,  # 8e-4,
-    beta=1e-6,  # 1e-6,
-    GammaInv=GammaInv,
-    clip=[0.001, 3.0],
     verbose=True,
 )
 
 
-sigma_rec_tv = Function(solver.V_sigma)
-sigma_rec_tv.x.array[:] = sigma
+# sigma_rec_tv = Function(solver.V_sigma)
+# sigma_rec_tv.x.array[:] = sigma
 
 
 rel_error_l1 = compute_relative_l1_error(sigma_reco_l1_vsigma, sigma_gt_vsigma)
