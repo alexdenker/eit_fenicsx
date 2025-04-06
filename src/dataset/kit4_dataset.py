@@ -19,6 +19,7 @@ class KIT4Dataset(Dataset):
         base_path="KIT4/data_mat_files",
         inj_mode="all_against_1",
         img_path="KIT4/target_photos",
+        mask_path="KIT4/segmentation"
     ):
         """
         Dataset to load the KIT4 data. The measurements in KIT4 is the current of adjacent electrodes.
@@ -34,6 +35,8 @@ class KIT4Dataset(Dataset):
 
         self.base_path = base_path
         self.img_path = img_path
+        self.mask_path = mask_path
+
         self.inj_mode = inj_mode
 
         data = loadmat(os.path.join(self.base_path, "datamat_1_0.mat"))
@@ -48,6 +51,7 @@ class KIT4Dataset(Dataset):
 
         self.files = os.listdir(self.base_path)
         self.photos = os.listdir(self.img_path)
+        self.mask = [f for f in os.listdir(self.mask_path) if f.endswith("npy")]
 
         def sort_fun(x):
             x = x.split(".")[0]
@@ -59,10 +63,20 @@ class KIT4Dataset(Dataset):
 
         self.files.sort(key=sort_fun)
         self.photos.sort(key=sort_fun)
+        self.mask.sort(key=sort_fun)
 
         self.Uel_background = data["Uel"].T
         if self.inj_mode == "all_against_1":
             self.Uel_background = self.Uel_background[-15:, :]
+
+        U = []
+        for i in range(self.Uel_background.shape[0]):
+            U_sol, res, _, _ = np.linalg.lstsq(
+                self.Bf, np.hstack([self.Uel_background[i, :], np.array([0])]), rcond=None
+            )
+            U.append(U_sol)
+
+        self.Uel_background = np.stack(U)
 
         # self.sigma_files = [f for f in os.listdir(os.path.join(self.base_path, self.part)) if f.startswith("sigma")]
         # self.sigma_files.sort()
@@ -92,15 +106,17 @@ class KIT4Dataset(Dataset):
         np_frame = np.array(im_frame) / 255.0
         im = torch.from_numpy(np_frame).float()
 
-        return im.permute(2, 0, 1), Umeas
+        mask = np.load(os.path.join(self.mask_path, self.mask[IDX]))
+        mask = torch.from_numpy(mask)
+        return im.permute(2, 0, 1), Umeas, mask
 
 
 if __name__ == "__main__":
     dataset = KIT4Dataset()
     print(len(dataset))
 
-    x, U = dataset[5]
-    print(x.shape, U.shape)
+    x, U, mask = dataset[5]
+    print(x.shape, U.shape, mask.shape)
     """
     sigma, Umeas = dataset[45]
     print(sigma.shape, Umeas.shape)
